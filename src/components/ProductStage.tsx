@@ -446,55 +446,6 @@ function spawnFrom(
   return verts.length - 1
 }
 
-function coverSide(
-  verts: ShellVert[],
-  indices: number[],
-  sign: 1 | -1,
-  hemY: number,
-  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-) {
-  const y0 = Math.max(hemY + 0.025, 0.2)
-  const y1 = 0.625
-  const rows = 8
-  const cols = 9
-  const grid: number[][] = []
-  for (let row = 0; row < rows; row += 1) {
-    const rt = row / (rows - 1)
-    const y = y0 + (y1 - y0) * rt
-    const halfZ = 0.16 - rt * 0.02
-    const line: number[] = []
-    for (let col = 0; col < cols; col += 1) {
-      const z = -halfZ + (2 * halfZ) * (col / (cols - 1))
-      let best = -1
-      let dist = Infinity
-      for (let i = 0; i < verts.length; i += 1) {
-        const vert = verts[i]
-        if (sign * vert.nx < 0.2 || vert.sleeve) continue
-        const d = (vert.y - y) ** 2 + (vert.z - z) ** 2
-        if (d < dist) {
-          dist = d
-          best = i
-        }
-      }
-      if (best < 0) continue
-      const src = verts[best]
-      const x = sign * Math.max(0.09, Math.abs(src.x))
-      line.push(spawnFrom(verts, src, x, y, z, sign, 0, 0, wristT, aroundArm, hemY))
-    }
-    if (line.length === cols) grid.push(line)
-  }
-  for (let row = 0; row < grid.length - 1; row += 1) {
-    for (let col = 0; col < cols - 1; col += 1) {
-      const a = grid[row][col]
-      const b = grid[row][col + 1]
-      const c = grid[row + 1][col]
-      const d = grid[row + 1][col + 1]
-      indices.push(a, b, d, a, d, c)
-    }
-  }
-}
-
 function applyWidth(verts: ShellVert[], widthScale: number) {
   const w = Math.max(0.7, widthScale)
   if (Math.abs(w - 1) < 1e-4) return
@@ -526,74 +477,176 @@ function scaleSleeved(verts: ShellVert[], fit: ShellFit) {
   }
 }
 
-const RING_POINTS = 64
-/** Armhole ring stays under the shoulder peak. */
-const ARM_TOP = 0.55
+const ARM_TOP = 0.54
 
-function nearestShell(verts: ShellVert[], limit: number, x: number, y: number, z: number) {
+type Hole = { z: number; y: number; rz: number; ry: number }
+type Pt = { y: number; z: number }
+
+function inHole(p: Pt, hole: Hole) {
+  const dy = (p.y - hole.y) / hole.ry
+  const dz = (p.z - hole.z) / hole.rz
+  return dy * dy + dz * dz < 1 - 1e-6
+}
+
+/** Keep the part of a small convex cell that sits outside one hole. */
+function clipOutside(poly: Pt[], hole: Hole) {
+  const out: Pt[] = []
+  const hit = (a: Pt, b: Pt) => {
+    const dy = b.y - a.y
+    const dz = b.z - a.z
+    const fy = (a.y - hole.y) / hole.ry
+    const fz = (a.z - hole.z) / hole.rz
+    const ey = dy / hole.ry
+    const ez = dz / hole.rz
+    const A = ey * ey + ez * ez
+    const B = 2 * (fy * ey + fz * ez)
+    const C = fy * fy + fz * fz - 1
+    const disc = B * B - 4 * A * C
+    if (disc < 0 || A < 1e-14) return null
+    const root = Math.sqrt(disc)
+    let best = -1
+    for (const t of [(-B - root) / (2 * A), (-B + root) / (2 * A)]) {
+      if (t > 1e-4 && t < 1 - 1e-4 && (best < 0 || t < best)) best = t
+    }
+    if (best < 0) return null
+    return { y: a.y + best * dy, z: a.z + best * dz }
+  }
+  for (let i = 0; i < poly.length; i += 1) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    const ao = !inHole(a, hole)
+    const bo = !inHole(b, hole)
+    if (ao && bo) out.push(b)
+    else if (ao && !bo) {
+      const p = hit(a, b)
+      if (p) out.push(p)
+    } else if (!ao && bo) {
+      const p = hit(a, b)
+      if (p) out.push(p)
+      out.push(b)
+    }
+  }
+  return out
+}
+
+function surfacePoint(verts: ShellVert[], limit: number, sign: 1 | -1, y: number, z: number) {
   let best = 0
   let dist = Infinity
+  let weight = 0
+  let depth = 0
   const n = Math.min(limit, verts.length)
+  const queryY = Math.min(y, 0.54)
   for (let i = 0; i < n; i += 1) {
     const vert = verts[i]
-    const d = (vert.x - x) ** 2 + (vert.y - y) ** 2 + (vert.z - z) ** 2
+    if (vert.sleeve || vert.y > 0.56 || sign * vert.nx < 0.3) continue
+    const d = (vert.y - queryY) ** 2 + (vert.z - z) ** 2
     if (d < dist) {
       dist = d
       best = i
     }
+    if (d > 0.03) continue
+    const w = 1 / (d + 0.001)
+    weight += w
+    depth += w * Math.abs(vert.x)
   }
-  return verts[best]
+  if (dist === Infinity) {
+    for (let i = 0; i < n; i += 1) {
+      const d = (verts[i].y - queryY) ** 2 + (verts[i].z - z) ** 2
+      if (d < dist) {
+        dist = d
+        best = i
+      }
+    }
+  }
+  const body = weight > 0 ? depth / weight : sign > 0 ? 0.16 : 0.1
+  const floor = sign > 0 ? 0.15 : 0.09
+  return { src: verts[best], x: sign * (Math.max(floor, body) + 0.014) }
 }
 
-function addTorus(
+function addHoledPanel(
   verts: ShellVert[],
   indices: number[],
-  center: { x: number; y: number; z: number },
-  radiusX: number,
-  radiusY: number,
-  radiusZ: number,
-  tube: number,
-  plane: 'xz' | 'yz',
+  sign: 1 | -1,
+  hemY: number,
+  fit: ShellFit,
   wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
   aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  hemY: number,
 ) {
-  const minorN = 8
-  const donors = verts.length
-  const grid: number[][] = []
-  for (let i = 0; i < RING_POINTS; i += 1) {
-    const ang = (i / RING_POINTS) * Math.PI * 2
-    const c = Math.cos(ang)
-    const s = Math.sin(ang)
-    const mx = center.x + (plane === 'xz' ? c * radiusX : 0)
-    const my = center.y + (plane === 'yz' ? s * radiusY : 0)
-    const mz = center.z + (plane === 'xz' ? s * radiusZ : c * radiusZ)
-    const ux = mx - center.x
-    const uy = my - center.y
-    const uz = mz - center.z
-    const ulen = Math.hypot(ux, uy, uz) || 1
-    const bx = plane === 'yz' ? 1 : 0
-    const by = plane === 'xz' ? 1 : 0
-    const row: number[] = []
-    for (let j = 0; j < minorN; j += 1) {
-      const bang = (j / minorN) * Math.PI * 2
-      const x = mx + (ux / ulen) * Math.cos(bang) * tube + bx * Math.sin(bang) * tube
-      const y = my + (uy / ulen) * Math.cos(bang) * tube + by * Math.sin(bang) * tube
-      const z = mz + (uz / ulen) * Math.cos(bang) * tube
-      const src = nearestShell(verts, donors, x, y, z)
-      row.push(spawnFrom(verts, src, x, y, z, bx || ux, by || uy, uz, wristT, aroundArm, hemY))
-    }
-    grid.push(row)
+  const w = Math.max(0.7, fit.widthScale)
+  const neckR = Math.min(0.05, 0.046 * fit.neckScale)
+  let armR = Math.min(0.04, 0.032 * fit.sleeveScale)
+  const armCy = 0.45
+  if (armCy + armR > ARM_TOP) armR = ARM_TOP - armCy
+  const y0 = hemY + 0.012
+  const y1 = 0.64
+  const holes: Hole[] = [
+    { z: 0, y: 0.575, rz: neckR / w, ry: neckR },
+    { z: -0.1, y: armCy, rz: armR / w, ry: armR },
+    { z: 0.1, y: armCy, rz: armR / w, ry: armR },
+  ]
+  const halfZ = (y: number) => {
+    const t = (y - y0) / (y1 - y0)
+    return 0.105 + t * 0.055
   }
-  for (let i = 0; i < RING_POINTS; i += 1) {
-    const i2 = (i + 1) % RING_POINTS
-    for (let j = 0; j < minorN; j += 1) {
-      const j2 = (j + 1) % minorN
-      const a = grid[i][j]
-      const b = grid[i2][j]
-      const c = grid[i2][j2]
-      const d = grid[i][j2]
-      indices.push(a, b, c, a, c, d)
+  const rows = 46
+  const cols = 40
+  const donors = verts.length
+  const cache = new Map<string, number>()
+  const put = (p: Pt) => {
+    const key = `${p.y.toFixed(5)}|${p.z.toFixed(5)}`
+    const hit = cache.get(key)
+    if (hit !== undefined) return hit
+    const point = surfacePoint(verts, donors, sign, p.y, p.z)
+    const id = spawnFrom(verts, point.src, point.x, p.y, p.z, sign, 0, 0, wristT, aroundArm, hemY)
+    cache.set(key, id)
+    return id
+  }
+  const pushTri = (a: Pt, b: Pt, c: Pt) => {
+    const az = b.z - a.z
+    const ay = b.y - a.y
+    const bz = c.z - a.z
+    const by = c.y - a.y
+    const cross = az * by - ay * bz
+    if (Math.abs(cross) < 1e-8) return
+    const ia = put(a)
+    const ib = put(b)
+    const ic = put(c)
+    const facesBack = cross < 0
+    if (facesBack === sign < 0) indices.push(ia, ib, ic)
+    else indices.push(ic, ib, ia)
+  }
+  const emit = (poly: Pt[]) => {
+    if (poly.length < 3) return
+    if (poly.length === 3) {
+      pushTri(poly[0], poly[1], poly[2])
+      return
+    }
+    const faces = THREE.ShapeUtils.triangulateShape(
+      poly.map((p) => new THREE.Vector2(p.z, p.y)),
+      [],
+    )
+    for (const face of faces) pushTri(poly[face[0]], poly[face[1]], poly[face[2]])
+  }
+  for (let row = 0; row < rows - 1; row += 1) {
+    const yA = y0 + ((y1 - y0) * row) / (rows - 1)
+    const yB = y0 + ((y1 - y0) * (row + 1)) / (rows - 1)
+    for (let col = 0; col < cols - 1; col += 1) {
+      const zA = -halfZ(yA) + (2 * halfZ(yA) * col) / (cols - 1)
+      const zB = -halfZ(yA) + (2 * halfZ(yA) * (col + 1)) / (cols - 1)
+      const zC = -halfZ(yB) + (2 * halfZ(yB) * col) / (cols - 1)
+      const zD = -halfZ(yB) + (2 * halfZ(yB) * (col + 1)) / (cols - 1)
+      let poly: Pt[] = [
+        { y: yA, z: zA },
+        { y: yA, z: zB },
+        { y: yB, z: zD },
+        { y: yB, z: zC },
+      ]
+      if (poly.every((p) => holes.some((hole) => inHole(p, hole)))) continue
+      for (const hole of holes) {
+        if (poly.length < 3) break
+        if (poly.some((p) => inHole(p, hole))) poly = clipOutside(poly, hole)
+      }
+      emit(poly)
     }
   }
 }
@@ -606,42 +659,9 @@ function sealSleeveless(
   hemY: number,
   fit: ShellFit,
 ) {
-  coverSide(verts, indices, 1, hemY, wristT, aroundArm)
-  coverSide(verts, indices, -1, hemY, wristT, aroundArm)
-  const w = Math.max(0.7, fit.widthScale)
-  const neckR = (0.062 * fit.neckScale) / w
-  let armR = (0.048 * fit.sleeveScale) / w
-  const armCy = 0.5
-  if (armCy + armR > ARM_TOP) armR = ARM_TOP - armCy
-  const tube = 0.007 / w
-  addTorus(
-    verts,
-    indices,
-    { x: 0.16, y: 0.6, z: 0 },
-    neckR,
-    neckR,
-    neckR,
-    0.008 / w,
-    'yz',
-    wristT,
-    aroundArm,
-    hemY,
-  )
-  for (const sign of [-1, 1] as const) {
-    addTorus(
-      verts,
-      indices,
-      { x: 0.17, y: armCy, z: sign * 0.13 },
-      armR,
-      armR,
-      armR,
-      tube,
-      'yz',
-      wristT,
-      aroundArm,
-      hemY,
-    )
-  }
+  indices.length = 0
+  addHoledPanel(verts, indices, 1, hemY, fit, wristT, aroundArm)
+  addHoledPanel(verts, indices, -1, hemY, fit, wristT, aroundArm)
 }
 
 function assignUv(

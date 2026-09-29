@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fetchProduct } from '../api'
 import { useAccount } from '../account'
@@ -56,6 +56,7 @@ export function ProductPage() {
   const [added, setAdded] = useState(false)
   const [color, setColor] = useState(() => defaultTeeColor(handle))
   const [motion, setMotion] = useState<BodyMotion>('diam')
+  const [fabricUrl, setFabricUrl] = useState<string | null>(null)
   const [addError, setAddError] = useState('')
 
   useEffect(() => {
@@ -64,6 +65,10 @@ export function ProductPage() {
     setError('')
     setColor(defaultTeeColor(handle))
     setMotion('diam')
+    setFabricUrl((current) => {
+      if (current) URL.revokeObjectURL(current)
+      return null
+    })
     fetchProduct(handle)
       .then((next) => {
         setProduct(next)
@@ -93,6 +98,21 @@ export function ProductPage() {
   const weightKg = account.active?.weightKg ?? 70
   const chest = estimatedChestCm(weightKg)
   const fit = product.kind === 'tee' && variant ? fitFor(variant.label, chest) : null
+
+
+  function onFabricFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const name = file.name.toLowerCase()
+    const png = file.type === 'image/png' || name.endsWith('.png')
+    const jpeg = file.type === 'image/jpeg' || name.endsWith('.jpg') || name.endsWith('.jpeg')
+    if (!png && !jpeg) return
+    const url = URL.createObjectURL(file)
+    setFabricUrl((current) => {
+      if (current) URL.revokeObjectURL(current)
+      return url
+    })
+  }
 
   function onAddCharacter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -125,6 +145,7 @@ export function ProductPage() {
               weightKg={weightKg}
               color={color}
               motion={motion}
+              fabricUrl={fabricUrl}
             />
           </div>
         </div>
@@ -154,10 +175,20 @@ export function ProductPage() {
                 </button>
               ))}
             </div>
+            <label className="field fabric-field">
+              <span>Fabric image</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                onChange={onFabricFile}
+              />
+            </label>
+            <p className="stage-caption local-preview">
+              This image is only a local preview. It stays in this browser and is not uploaded.
+            </p>
             <p className="stage-caption credits">
               Body: CC0. Source:{' '}
-              <a href="https://orange-juice-games.itch.io/male-base-mesh">orange-juice-games</a>. Shirt: T Shirt by{' '}
-              <a href="https://poly.pizza/m/oZOt671DyI">Nour</a>, CC BY.
+              <a href="https://orange-juice-games.itch.io/male-base-mesh">orange-juice-games</a>.
             </p>
           </>
         )}

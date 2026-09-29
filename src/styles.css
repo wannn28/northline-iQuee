@@ -296,8 +296,8 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
   background: #fff;
   padding: 14px 14px 12px;
   position: relative;
-  z-index: 1;
-  scroll-margin-top: 128px;
+  z-index: 2;
+  scroll-margin-top: 180px;
   overflow: visible;
 }
 .fit-badge .kicker { margin-bottom: 4px; }
@@ -306,11 +306,12 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
   font-size: 28px;
   font-weight: 560;
   letter-spacing: -0.03em;
-  line-height: 1.25;
+  line-height: 1.35;
   margin: 0 0 6px;
   padding-bottom: 2px;
   text-transform: lowercase;
   overflow: visible;
+  white-space: nowrap;
 }
 .fit-gloss { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
 .fit-badge p { margin: 0 0 6px; font-size: 13px; }
@@ -336,3 +337,7 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
 @media (max-width: 900px) {
   .account-grid { grid-template-columns: 1fr; }
 }
+
+.fabric-field { margin-top: 14px; max-width: 440px; }
+.local-preview { margin-top: 6px; }
+html { scroll-padding-top: 112px; }

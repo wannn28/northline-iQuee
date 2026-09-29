@@ -39,16 +39,19 @@ const TORSO_BONES = new Set(['spine001', 'spine002', 'spine003', 'shoulderL', 's
 const SHELL_OFFSET = 0.014
 const SLEEVE_T = 0.46
 const NECK_Y = 0.7
-const WAIST_HEM = 0.12
-const THIGH_HEM = -0.16
+const COLLAR_Y = 0.645
+const WAIST_HEM = 0.169
+const THIGH_HEM = -0.12
 const FRONT_NX = 0.22
 const LOWER_BONES = new Set(['spine', 'pelvisL', 'pelvisR', 'thighL', 'thighR'])
 
-/** Hem only. Shortest sits at the waist, longest reaches the upper thigh. */
+/** 80 cm is collar y=0.645 to the waist ring y=0.170. Longer lengths use that same ruler. */
+const CM_PER_UNIT = LENGTH_MIN / (COLLAR_Y - WAIST_HEM)
+
 function hemYForLength(lengthCm: number) {
-  const span = LENGTH_MAX - LENGTH_MIN
-  const t = clamp01((lengthCm - LENGTH_MIN) / span)
-  return WAIST_HEM + (THIGH_HEM - WAIST_HEM) * t
+  const cm = Math.min(LENGTH_MAX, Math.max(LENGTH_MIN, lengthCm))
+  const hem = COLLAR_Y - cm / CM_PER_UNIT
+  return Math.min(WAIST_HEM, Math.max(THIGH_HEM, hem))
 }
 
 const WHITE = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
@@ -592,7 +595,7 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
   const shellMat = createClothMaterial('#2c3338')
   const shells = {} as Record<Garment, THREE.SkinnedMesh>
   for (const garment of GARMENTS) {
-    const shell = new THREE.SkinnedMesh(buildGarment(mesh, garment, hemYForLength(70)), shellMat)
+    const shell = new THREE.SkinnedMesh(buildGarment(mesh, garment, hemYForLength(LENGTH_MIN)), shellMat)
     shell.name = `TeeShell-${garment}`
     shell.frustumCulled = false
     shell.castShadow = false
@@ -926,7 +929,7 @@ export function ProductStage({
   color = '#2c3338',
   motion = 'diam',
   garment = 'short',
-  lengthCm = 70,
+  lengthCm = LENGTH_MIN,
   shellOn = true,
   frontUrl = null,
   backUrl = null,

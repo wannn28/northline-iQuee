@@ -9,11 +9,12 @@ export const GARMENT_OPTIONS: { id: Garment; label: string }[] = [
   { id: 'sleeveless', label: 'Sleeveless' },
 ]
 
-export const LENGTH_MIN = 58
-export const LENGTH_MAX = 84
+/** Collar-to-hem cm. 80 is the waist ring; 129 reaches the upper thigh on the same ruler. */
+export const LENGTH_MIN = 80
+export const LENGTH_MAX = 129
 
 export function clampLength(value: number) {
-  if (!Number.isFinite(value)) return 70
+  if (!Number.isFinite(value)) return LENGTH_MIN
   return Math.min(LENGTH_MAX, Math.max(LENGTH_MIN, Math.round(value)))
 }
 

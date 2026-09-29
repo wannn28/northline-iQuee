@@ -143,7 +143,7 @@ export function ProductPage() {
               color={color}
               motion={motion}
               garment={chosen?.shell ?? 'short'}
-              lengthCm={chosen?.lengthCm ?? 70}
+              lengthCm={chosen?.lengthCm ?? 80}
               shellOn={Boolean(chosen)}
               frontUrl={chosen?.frontImage ?? null}
               backUrl={chosen?.backImage ?? null}

@@ -84,7 +84,7 @@ export function SellerPage() {
           </label>
           <label className="field">
             <span>Length (cm)</span>
-            <input name="length" type="number" min={LENGTH_MIN} max={LENGTH_MAX} defaultValue={70} required />
+            <input name="length" type="number" min={LENGTH_MIN} max={LENGTH_MAX} defaultValue={LENGTH_MIN} required />
           </label>
           <p className="note">
             Length only moves the hem, from the waist ({LENGTH_MIN} cm) down to the upper thigh ({LENGTH_MAX} cm).

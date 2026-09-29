@@ -108,7 +108,6 @@ function paintShirt(root: THREE.Object3D, color: string) {
 
 
 function dropSleeves(root: THREE.Object3D) {
-  const axis = new THREE.Vector3(0, 0, 1)
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return
     const geometry = obj.geometry.clone()
@@ -118,19 +117,10 @@ function dropSleeves(root: THREE.Object3D) {
     const vertex = new THREE.Vector3()
     for (let i = 0; i < position.count; i += 1) {
       vertex.fromBufferAttribute(position, i)
-      const side = vertex.x >= 0 ? 1 : -1
-      if (Math.abs(vertex.x) < 0.155) continue
-      const pivotX = side * 0.145
-      const pivotY = 0.785
-      vertex.x -= pivotX
-      vertex.y -= pivotY
-      const depth = vertex.z
-      vertex.z = 0
-      vertex.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(axis, -side * 1.05))
-      vertex.z = depth
-      vertex.x += pivotX
-      vertex.y += pivotY
-      position.setXYZ(i, vertex.x, vertex.y, vertex.z)
+      const reach = Math.abs(vertex.x)
+      const drop = Math.max(0, reach - 0.16) * 1.15
+      if (drop <= 0) continue
+      position.setXYZ(i, vertex.x, vertex.y - drop, vertex.z)
     }
     position.needsUpdate = true
     geometry.computeVertexNormals()
@@ -185,7 +175,7 @@ function assembleRig(bodyScene: THREE.Object3D, shirtScene: THREE.Object3D): Rig
   const upright = new THREE.Quaternion().setFromRotationMatrix(
     new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0)),
   )
-  shirt.scale.set(1.28, 1.95, 1.9)
+  shirt.scale.set(1.48, 2.15, 1.9)
   shirt.quaternion.copy(boneQ).invert().multiply(upright)
   shirt.position.set(0, 0, 0)
   chest.add(shirt)
@@ -193,7 +183,7 @@ function assembleRig(bodyScene: THREE.Object3D, shirtScene: THREE.Object3D): Rig
   const worn = new THREE.Box3().setFromObject(shirt)
   const shift = new THREE.Vector3(
     0.04 - (worn.min.x + worn.max.x) / 2,
-    0.66 - worn.max.y,
+    0.73 - worn.max.y,
     -(worn.min.z + worn.max.z) / 2,
   )
   const restPosition = shift.applyQuaternion(boneQ.clone().invert())

@@ -136,6 +136,7 @@ export function ProductPage() {
             data-width={chosen?.bodyWidthCm ?? ''}
             data-neck={chosen?.neckCm ?? ''}
             data-sleeve={chosen?.sleeveCm ?? ''}
+            data-sleeve-length={chosen?.sleeveLengthCm ?? ''}
             data-seller={chosen?.id ?? ''}
           >
             <ProductStage
@@ -150,6 +151,7 @@ export function ProductPage() {
               bodyWidthCm={chosen?.bodyWidthCm}
               neckCm={chosen?.neckCm}
               sleeveCm={chosen?.sleeveCm}
+              sleeveLengthCm={chosen?.sleeveLengthCm}
               shellOn={Boolean(chosen)}
               frontUrl={chosen?.frontImage ?? null}
               backUrl={chosen?.backImage ?? null}
@@ -200,7 +202,7 @@ export function ProductPage() {
             </div>
             {chosen && (
               <p className="stage-caption">
-                {chosen.name}: {shellLabel(chosen.shell)}, hem {chosen.lengthCm} cm, width {chosen.bodyWidthCm} cm, neck {chosen.neckCm} cm, sleeve {chosen.sleeveCm} cm. Set by the seller.
+                {chosen.name}: {shellLabel(chosen.shell)}, hem {chosen.lengthCm} cm, width {chosen.bodyWidthCm} cm, neck {chosen.neckCm} cm, opening {chosen.sleeveCm} cm, sleeve {chosen.sleeveLengthCm} cm. Set by the seller.
               </p>
             )}
             <div className="anim-picker" role="group" aria-label="Animation">
@@ -400,6 +402,7 @@ export function ProductPage() {
                 bodyWidthCm: chosen.bodyWidthCm,
                 neckCm: chosen.neckCm,
                 sleeveCm: chosen.sleeveCm,
+                sleeveLengthCm: chosen.sleeveLengthCm,
                 frontImage: chosen.frontImage,
                 backImage: chosen.backImage,
                 fit,

@@ -9,6 +9,9 @@ import {
   NECK_MAX,
   NECK_MIN,
   SLEEVE_DEFAULT,
+  SLEEVE_LEN_DEFAULT,
+  SLEEVE_LEN_MAX,
+  SLEEVE_LEN_MIN,
   SLEEVE_MAX,
   SLEEVE_MIN,
   WIDTH_DEFAULT,
@@ -17,6 +20,7 @@ import {
   clampLength,
   clampNeck,
   clampSleeve,
+  clampSleeveLength,
   clampWidth,
   shellLabel,
   type Garment,
@@ -54,6 +58,7 @@ export function SellerPage() {
   const [bodyWidthCm, setBodyWidthCm] = useState(WIDTH_DEFAULT)
   const [neckCm, setNeckCm] = useState(NECK_DEFAULT)
   const [sleeveCm, setSleeveCm] = useState(SLEEVE_DEFAULT)
+  const [sleeveLengthCm, setSleeveLengthCm] = useState(SLEEVE_LEN_DEFAULT)
 
   async function onFile(side: 'front' | 'back', file: File | undefined) {
     if (!file) return
@@ -72,6 +77,7 @@ export function SellerPage() {
       bodyWidthCm,
       neckCm,
       sleeveCm,
+      sleeveLengthCm,
       frontImage: front,
       backImage: back,
     })
@@ -153,8 +159,19 @@ export function SellerPage() {
               onChange={(event) => setSleeveCm(clampSleeve(Number(event.target.value)))}
             />
           </label>
+          <label className="field">
+            <span>Sleeve length (cm)</span>
+            <input
+              type="number"
+              min={SLEEVE_LEN_MIN}
+              max={SLEEVE_LEN_MAX}
+              value={sleeveLengthCm}
+              required
+              onChange={(event) => setSleeveLengthCm(clampSleeveLength(Number(event.target.value)))}
+            />
+          </label>
           <p className="note">
-            Length moves the hem only, from the waist ({LENGTH_MIN} cm) to the upper thigh ({LENGTH_MAX} cm). Neck and sleeve openings are smooth circles with a thin binding. The shoulder stays covered.
+            Length moves the hem only, from the waist ({LENGTH_MIN} cm) to the upper thigh ({LENGTH_MAX} cm). Neck and sleeve openings are smooth circles with a thin binding. The shoulder stays covered. Sleeve length only moves the shell sleeve. Sleeveless has no sleeve.
           </p>
           <div className="fabric-row">
             <label className="field">
@@ -195,6 +212,7 @@ export function SellerPage() {
             data-width={bodyWidthCm}
             data-neck={neckCm}
             data-sleeve={sleeveCm}
+            data-sleeve-length={sleeveLengthCm}
           >
             <ProductStage
               kind="tee"
@@ -207,6 +225,7 @@ export function SellerPage() {
               bodyWidthCm={bodyWidthCm}
               neckCm={neckCm}
               sleeveCm={sleeveCm}
+              sleeveLengthCm={sleeveLengthCm}
               shellOn
               frontUrl={front}
               backUrl={back}
@@ -227,7 +246,7 @@ export function SellerPage() {
                 <div>
                   <strong>{product.name}</strong>
                   <p>
-                    {shellLabel(product.shell)} · hem {product.lengthCm} cm · width {product.bodyWidthCm} cm · neck {product.neckCm} cm · sleeve {product.sleeveCm} cm
+                    {shellLabel(product.shell)} · hem {product.lengthCm} cm · width {product.bodyWidthCm} cm · neck {product.neckCm} cm · opening {product.sleeveCm} cm · sleeve {product.sleeveLengthCm} cm
                   </p>
                 </div>
                 <button className="linkish" type="button" onClick={() => removeProduct(product.id)}>

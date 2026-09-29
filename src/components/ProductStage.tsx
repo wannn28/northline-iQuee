@@ -4,7 +4,7 @@ import { OrbitControls, useGLTF } from '@react-three/drei'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import * as THREE from 'three'
 import { chestWidthScale, heightScale } from '../lib/fit'
-import { LENGTH_MAX, LENGTH_MIN, NECK_DEFAULT, SLEEVE_DEFAULT, WIDTH_DEFAULT, shellFit, type Garment, type ShellFit } from '../lib/shell'
+import { LENGTH_MAX, LENGTH_MIN, NECK_DEFAULT, SLEEVE_DEFAULT, SLEEVE_LEN_DEFAULT, WIDTH_DEFAULT, clampSleeveLength, shellFit, type Garment, type ShellFit } from '../lib/shell'
 
 const FRAME_URL = '/models/frame.glb'
 // CC0 male base mesh (male_base_mesh.glb from BoQsc/Godot-3D-Male-Base-Mesh 1.0.2).
@@ -28,6 +28,7 @@ type StageProps = {
   bodyWidthCm?: number
   neckCm?: number
   sleeveCm?: number
+  sleeveLengthCm?: number
   shellOn?: boolean
   frontUrl?: string | null
   backUrl?: string | null
@@ -40,7 +41,6 @@ const _qa = new THREE.Quaternion()
 const _qb = new THREE.Quaternion()
 const TORSO_BONES = new Set(['spine001', 'spine002', 'spine003', 'shoulderL', 'shoulderR'])
 const SHELL_OFFSET = 0.014
-const SLEEVE_T = 0.46
 const NECK_Y = 0.7
 const COLLAR_Y = 0.645
 const WAIST_HEM = 0.169
@@ -229,7 +229,7 @@ function clamp01(n: number) {
  * Skinned garment carved from the CC0 body. One shell per style, same skeleton.
  * UVs: front image on the front, back image on the back, sides stay untextured.
  */
-function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment, hemY: number, fit: ShellFit = shellFit(WIDTH_DEFAULT, NECK_DEFAULT, SLEEVE_DEFAULT)) {
+function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment, hemY: number, fit: ShellFit = shellFit(WIDTH_DEFAULT, NECK_DEFAULT, SLEEVE_DEFAULT), sleeveLengthCm: number = SLEEVE_LEN_DEFAULT) {
   const source = mesh.geometry
   const position = source.getAttribute('position') as THREE.BufferAttribute
   const normal = source.getAttribute('normal') as THREE.BufferAttribute
@@ -241,14 +241,6 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment, hemY: number, f
   mesh.skeleton.update()
   const arms = { L: makeArm(mesh, 'L'), R: makeArm(mesh, 'R') }
   const point = new THREE.Vector3()
-  const along = new THREE.Vector3()
-  const sleeveT = (x: number, y: number, z: number) => {
-    const side = z < 0 ? 'L' : 'R'
-    const { origin, elbow } = arms[side]
-    along.copy(elbow).sub(origin)
-    point.set(x, y, z).sub(origin)
-    return point.dot(along) / Math.max(1e-6, along.lengthSq())
-  }
   const wristT = (side: 'L' | 'R', x: number, y: number, z: number) => {
     const frame = arms[side]
     point.set(x, y, z).sub(frame.origin)
@@ -264,8 +256,9 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment, hemY: number, f
 
   const names = mesh.skeleton.bones.map((bone) => bone.name)
   const keep = new Uint8Array(position.count)
-  const longArm = garment === 'long' || garment === 'button'
   const sleeveless = garment === 'sleeveless'
+  const reach = clampSleeveLength(sleeveLengthCm) / CM_PER_UNIT
+  const reachT = reach / Math.max(1e-4, arms.L.length)
   for (let vertex = 0; vertex < position.count; vertex += 1) {
     const bone = dominantBone(names, skinIndex, skinWeight, vertex)
     const y = position.getY(vertex)
@@ -275,11 +268,10 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment, hemY: number, f
       continue
     }
     if (sleeveless) continue
-    if (bone === 'upper_armL' || bone === 'upper_armR') {
-      if (longArm || sleeveT(position.getX(vertex), y, position.getZ(vertex)) < SLEEVE_T) keep[vertex] = 1
-      continue
-    }
-    if (longArm && (bone === 'forearmL' || bone === 'forearmR')) keep[vertex] = 1
+    const armBone = bone.startsWith('upper_arm') || bone.startsWith('forearm')
+    if (!armBone) continue
+    const side: 'L' | 'R' = bone.endsWith('L') ? 'L' : 'R'
+    if (wristT(side, position.getX(vertex), y, position.getZ(vertex)) <= reachT) keep[vertex] = 1
   }
 
   const verts: ShellVert[] = []
@@ -470,7 +462,7 @@ function coverSide(
   for (let row = 0; row < rows; row += 1) {
     const rt = row / (rows - 1)
     const y = y0 + (y1 - y0) * rt
-    const halfZ = 0.15 - rt * 0.07
+    const halfZ = 0.16 - rt * 0.02
     const line: number[] = []
     for (let col = 0; col < cols; col += 1) {
       const z = -halfZ + (2 * halfZ) * (col / (cols - 1))
@@ -534,52 +526,76 @@ function scaleSleeved(verts: ShellVert[], fit: ShellFit) {
   }
 }
 
-function boundaryLoops(indices: number[]) {
-  const count = new Map<string, number>()
-  const ends = new Map<string, [number, number]>()
-  const key = (a: number, b: number) => (a < b ? `${a}|${b}` : `${b}|${a}`)
-  for (let face = 0; face < indices.length; face += 3) {
-    const tri = [indices[face], indices[face + 1], indices[face + 2]]
-    for (let k = 0; k < 3; k += 1) {
-      const a = tri[k]
-      const b = tri[(k + 1) % 3]
-      const id = key(a, b)
-      count.set(id, (count.get(id) ?? 0) + 1)
-      ends.set(id, [a, b])
+const RING_POINTS = 64
+/** Armhole ring stays under the shoulder peak. */
+const ARM_TOP = 0.55
+
+function nearestShell(verts: ShellVert[], limit: number, x: number, y: number, z: number) {
+  let best = 0
+  let dist = Infinity
+  const n = Math.min(limit, verts.length)
+  for (let i = 0; i < n; i += 1) {
+    const vert = verts[i]
+    const d = (vert.x - x) ** 2 + (vert.y - y) ** 2 + (vert.z - z) ** 2
+    if (d < dist) {
+      dist = d
+      best = i
     }
   }
-  const adj = new Map<number, number[]>()
-  const link = (a: number, b: number) => {
-    const list = adj.get(a)
-    if (list) list.push(b)
-    else adj.set(a, [b])
-  }
-  for (const [id, n] of count) {
-    if (n !== 1) continue
-    const pair = ends.get(id)
-    if (!pair) continue
-    link(pair[0], pair[1])
-    link(pair[1], pair[0])
-  }
-  const seen = new Set<number>()
-  const loops: number[][] = []
-  for (const start of adj.keys()) {
-    if (seen.has(start)) continue
-    const loop = [start]
-    seen.add(start)
-    let prev = -1
-    let cur = start
-    for (;;) {
-      const next = (adj.get(cur) ?? []).find((id) => id !== prev && !seen.has(id))
-      if (next === undefined) break
-      seen.add(next)
-      loop.push(next)
-      prev = cur
-      cur = next
+  return verts[best]
+}
+
+function addTorus(
+  verts: ShellVert[],
+  indices: number[],
+  center: { x: number; y: number; z: number },
+  radiusX: number,
+  radiusY: number,
+  radiusZ: number,
+  tube: number,
+  plane: 'xz' | 'yz',
+  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  hemY: number,
+) {
+  const minorN = 8
+  const donors = verts.length
+  const grid: number[][] = []
+  for (let i = 0; i < RING_POINTS; i += 1) {
+    const ang = (i / RING_POINTS) * Math.PI * 2
+    const c = Math.cos(ang)
+    const s = Math.sin(ang)
+    const mx = center.x + (plane === 'xz' ? c * radiusX : 0)
+    const my = center.y + (plane === 'yz' ? s * radiusY : 0)
+    const mz = center.z + (plane === 'xz' ? s * radiusZ : c * radiusZ)
+    const ux = mx - center.x
+    const uy = my - center.y
+    const uz = mz - center.z
+    const ulen = Math.hypot(ux, uy, uz) || 1
+    const bx = plane === 'yz' ? 1 : 0
+    const by = plane === 'xz' ? 1 : 0
+    const row: number[] = []
+    for (let j = 0; j < minorN; j += 1) {
+      const bang = (j / minorN) * Math.PI * 2
+      const x = mx + (ux / ulen) * Math.cos(bang) * tube + bx * Math.sin(bang) * tube
+      const y = my + (uy / ulen) * Math.cos(bang) * tube + by * Math.sin(bang) * tube
+      const z = mz + (uz / ulen) * Math.cos(bang) * tube
+      const src = nearestShell(verts, donors, x, y, z)
+      row.push(spawnFrom(verts, src, x, y, z, bx || ux, by || uy, uz, wristT, aroundArm, hemY))
     }
-    if (loop.length >= 6) loops.push(loop)
+    grid.push(row)
   }
-  return loops
+  for (let i = 0; i < RING_POINTS; i += 1) {
+    const i2 = (i + 1) % RING_POINTS
+    for (let j = 0; j < minorN; j += 1) {
+      const j2 = (j + 1) % minorN
+      const a = grid[i][j]
+      const b = grid[i2][j]
+      const c = grid[i2][j2]
+      const d = grid[i][j2]
+      indices.push(a, b, c, a, c, d)
+    }
+  }
 }
 
 function sealSleeveless(
@@ -593,66 +609,38 @@ function sealSleeveless(
   coverSide(verts, indices, 1, hemY, wristT, aroundArm)
   coverSide(verts, indices, -1, hemY, wristT, aroundArm)
   const w = Math.max(0.7, fit.widthScale)
-  const neck = fit.neckScale / w
-  const sleeve = fit.sleeveScale / w
-  for (const loop of boundaryLoops(indices)) {
-    let cy = 0
-    let cz = 0
-    for (const id of loop) {
-      cy += verts[id].y
-      cz += verts[id].z
-    }
-    cy /= loop.length
-    cz /= loop.length
-    const neckLoop = loop.length <= 40 && loop.every((id) => verts[id].y > 0.6)
-    const armLoop = !neckLoop && cy > 0.5 && cy < 0.62 && Math.abs(cz) > 0.08 && loop.length <= 36
-    if (!neckLoop && !armLoop) continue
-    let cx = 0
-    for (const id of loop) cx += verts[id].x
-    cx /= loop.length
-    const outer: number[] = []
-    for (const id of loop) {
-      const vert = verts[id]
-      if (neckLoop) {
-        const ang = Math.atan2(vert.z - cz, vert.x - cx)
-        const rx = 0.055 * neck
-        const rz = 0.06 * neck
-        vert.x = cx + Math.cos(ang) * rx
-        vert.z = cz + Math.sin(ang) * rz
-        vert.y = Math.max(vert.y, 0.62)
-      } else {
-        const ang = Math.atan2(vert.y - cy, vert.z - cz)
-        let ry = 0.04 * sleeve
-        const rz = 0.038 * sleeve
-        if (cy + ry > 0.57) ry = 0.57 - cy
-        vert.y = cy + Math.sin(ang) * ry
-        vert.z = cz + Math.cos(ang) * rz
-      }
-      const src = verts[id]
-      const radialX = src.x - cx
-      const radialY = neckLoop ? 0 : src.y - cy
-      const radialZ = src.z - cz
-      const len = Math.hypot(radialX, radialY, radialZ) || 1
-      outer.push(
-        spawnFrom(
-          verts,
-          src,
-          src.x + (radialX / len) * (0.016 / w),
-          src.y + (radialY / len) * (0.016 / w),
-          src.z + (radialZ / len) * (0.016 / w),
-          0,
-          neckLoop ? 1 : 0,
-          neckLoop ? 0 : Math.sign(cz || 1),
-          wristT,
-          aroundArm,
-          hemY,
-        ),
-      )
-    }
-    for (let i = 0; i < loop.length; i += 1) {
-      const j = (i + 1) % loop.length
-      indices.push(loop[i], outer[i], outer[j], loop[i], outer[j], loop[j])
-    }
+  const neckR = (0.062 * fit.neckScale) / w
+  let armR = (0.048 * fit.sleeveScale) / w
+  const armCy = 0.5
+  if (armCy + armR > ARM_TOP) armR = ARM_TOP - armCy
+  const tube = 0.007 / w
+  addTorus(
+    verts,
+    indices,
+    { x: 0.16, y: 0.6, z: 0 },
+    neckR,
+    neckR,
+    neckR,
+    0.008 / w,
+    'yz',
+    wristT,
+    aroundArm,
+    hemY,
+  )
+  for (const sign of [-1, 1] as const) {
+    addTorus(
+      verts,
+      indices,
+      { x: 0.17, y: armCy, z: sign * 0.13 },
+      armR,
+      armR,
+      armR,
+      tube,
+      'yz',
+      wristT,
+      aroundArm,
+      hemY,
+    )
   }
 }
 
@@ -752,7 +740,7 @@ type RigHandle = {
   shells: Record<Garment, THREE.SkinnedMesh>
   shellMat: THREE.MeshStandardMaterial
   applyWeight: (weightKg: number) => void
-  applyFit: (lengthCm: number, fit: ShellFit) => void
+  applyFit: (lengthCm: number, fit: ShellFit, sleeveLengthCm: number) => void
   time: number
 }
 
@@ -839,7 +827,7 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
   const shellMat = createClothMaterial('#2c3338')
   const shells = {} as Record<Garment, THREE.SkinnedMesh>
   for (const garment of GARMENTS) {
-    const shell = new THREE.SkinnedMesh(buildGarment(mesh, garment, hemYForLength(LENGTH_MIN), shellFit(WIDTH_DEFAULT, NECK_DEFAULT, SLEEVE_DEFAULT)), shellMat)
+    const shell = new THREE.SkinnedMesh(buildGarment(mesh, garment, hemYForLength(LENGTH_MIN), shellFit(WIDTH_DEFAULT, NECK_DEFAULT, SLEEVE_DEFAULT), SLEEVE_LEN_DEFAULT), shellMat)
     shell.name = `TeeShell-${garment}`
     shell.frustumCulled = false
     shell.castShadow = false
@@ -877,11 +865,11 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
     girth('spine003', factor)
   }
 
-  const applyFit = (lengthCm: number, fit: ShellFit) => {
+  const applyFit = (lengthCm: number, fit: ShellFit, sleeveLengthCm: number) => {
     const hem = hemYForLength(lengthCm)
     for (const garment of GARMENTS) {
       const shell = shells[garment]
-      const next = buildGarment(mesh, garment, hem, fit)
+      const next = buildGarment(mesh, garment, hem, fit, sleeveLengthCm)
       shell.geometry.dispose()
       shell.geometry = next
     }
@@ -938,6 +926,7 @@ function TeeRig({
   bodyWidthCm,
   neckCm,
   sleeveCm,
+  sleeveLengthCm,
   shellOn,
   frontUrl,
   backUrl,
@@ -951,6 +940,7 @@ function TeeRig({
   bodyWidthCm: number
   neckCm: number
   sleeveCm: number
+  sleeveLengthCm: number
   shellOn: boolean
   frontUrl: string | null
   backUrl: string | null
@@ -970,8 +960,8 @@ function TeeRig({
   }, [garment, rig, shellOn])
 
   useEffect(() => {
-    rig.applyFit(lengthCm, shellFit(bodyWidthCm, neckCm, sleeveCm))
-  }, [lengthCm, bodyWidthCm, neckCm, sleeveCm, rig])
+    rig.applyFit(lengthCm, shellFit(bodyWidthCm, neckCm, sleeveCm), sleeveLengthCm)
+  }, [lengthCm, bodyWidthCm, neckCm, sleeveCm, sleeveLengthCm, rig])
 
   useEffect(() => {
     let alive = true
@@ -1124,6 +1114,7 @@ function View({
   bodyWidthCm,
   neckCm,
   sleeveCm,
+  sleeveLengthCm,
   shellOn,
   frontUrl,
   backUrl,
@@ -1152,6 +1143,7 @@ function View({
             bodyWidthCm={bodyWidthCm}
             neckCm={neckCm}
             sleeveCm={sleeveCm}
+            sleeveLengthCm={sleeveLengthCm}
             shellOn={shellOn}
             frontUrl={frontUrl}
             backUrl={backUrl}
@@ -1189,6 +1181,7 @@ export function ProductStage({
   bodyWidthCm = WIDTH_DEFAULT,
   neckCm = NECK_DEFAULT,
   sleeveCm = SLEEVE_DEFAULT,
+  sleeveLengthCm = SLEEVE_LEN_DEFAULT,
   shellOn = true,
   frontUrl = null,
   backUrl = null,
@@ -1228,6 +1221,7 @@ export function ProductStage({
           bodyWidthCm={bodyWidthCm}
           neckCm={neckCm}
           sleeveCm={sleeveCm}
+          sleeveLengthCm={sleeveLengthCm}
           shellOn={shellOn}
           frontUrl={frontUrl}
           backUrl={backUrl}

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { clampLength, clampNeck, clampSleeve, clampWidth, isGarment, type Garment } from './lib/shell'
+import { clampLength, clampNeck, clampSleeve, clampSleeveLength, clampWidth, defaultSleeveLength, isGarment, type Garment } from './lib/shell'
 
 export type SellerProduct = {
   id: string
@@ -9,6 +9,7 @@ export type SellerProduct = {
   bodyWidthCm: number
   neckCm: number
   sleeveCm: number
+  sleeveLengthCm: number
   frontImage: string | null
   backImage: string | null
 }
@@ -38,6 +39,7 @@ function load(): SellerProduct[] {
         bodyWidthCm: clampWidth(Number(item.bodyWidthCm)),
         neckCm: clampNeck(Number(item.neckCm)),
         sleeveCm: clampSleeve(Number(item.sleeveCm)),
+        sleeveLengthCm: clampSleeveLength(Number(item.sleeveLengthCm), defaultSleeveLength(item.shell)),
         frontImage: typeof item.frontImage === 'string' ? item.frontImage : null,
         backImage: typeof item.backImage === 'string' ? item.backImage : null,
       }))
@@ -68,6 +70,7 @@ export function SellerProvider({ children }: { children: ReactNode }) {
           bodyWidthCm: clampWidth(input.bodyWidthCm),
           neckCm: clampNeck(input.neckCm),
           sleeveCm: clampSleeve(input.sleeveCm),
+          sleeveLengthCm: clampSleeveLength(input.sleeveLengthCm),
           frontImage: input.frontImage,
           backImage: input.backImage,
         }

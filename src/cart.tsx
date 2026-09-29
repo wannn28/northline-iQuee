@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { FitWord } from './lib/fit'
-import { clampNeck, clampSleeve, clampWidth, isGarment, type Garment } from './lib/shell'
+import { clampNeck, clampSleeve, clampSleeveLength, clampWidth, isGarment, type Garment } from './lib/shell'
 
 export type CartLine = {
   variantId: number
@@ -16,6 +16,7 @@ export type CartLine = {
   bodyWidthCm?: number
   neckCm?: number
   sleeveCm?: number
+  sleeveLengthCm?: number
   frontImage?: string | null
   backImage?: string | null
   fit?: FitWord
@@ -55,6 +56,7 @@ function load(): CartLine[] {
         bodyWidthCm: Number.isFinite(Number(line.bodyWidthCm)) ? clampWidth(Number(line.bodyWidthCm)) : undefined,
         neckCm: Number.isFinite(Number(line.neckCm)) ? clampNeck(Number(line.neckCm)) : undefined,
         sleeveCm: Number.isFinite(Number(line.sleeveCm)) ? clampSleeve(Number(line.sleeveCm)) : undefined,
+        sleeveLengthCm: Number.isFinite(Number(line.sleeveLengthCm)) ? clampSleeveLength(Number(line.sleeveLengthCm)) : undefined,
         frontImage: typeof line.frontImage === 'string' ? line.frontImage : null,
         backImage: typeof line.backImage === 'string' ? line.backImage : null,
         fit: line.fit === 'muat' || line.fit === 'ketat' || line.fit === 'longgar' ? line.fit : undefined,

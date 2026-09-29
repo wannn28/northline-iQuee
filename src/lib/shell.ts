@@ -26,6 +26,12 @@ export const SLEEVE_MIN = 12
 export const SLEEVE_MAX = 26
 export const SLEEVE_DEFAULT = 18
 
+/** Sleeve length along the arm, in cm. Sleeveless ignores it. */
+export const SLEEVE_LEN_MIN = 8
+export const SLEEVE_LEN_MAX = 62
+export const SLEEVE_LEN_DEFAULT = 22
+export const SLEEVE_LEN_LONG = 58
+
 function clampCm(value: number, min: number, max: number, fallback: number) {
   if (!Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, Math.round(value)))
@@ -45,6 +51,14 @@ export function clampNeck(value: number) {
 
 export function clampSleeve(value: number) {
   return clampCm(value, SLEEVE_MIN, SLEEVE_MAX, SLEEVE_DEFAULT)
+}
+
+export function clampSleeveLength(value: number, fallback = SLEEVE_LEN_DEFAULT) {
+  return clampCm(value, SLEEVE_LEN_MIN, SLEEVE_LEN_MAX, fallback)
+}
+
+export function defaultSleeveLength(shell: Garment) {
+  return shell === 'long' || shell === 'button' ? SLEEVE_LEN_LONG : SLEEVE_LEN_DEFAULT
 }
 
 export type ShellFit = {

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { fetchProduct } from '../api'
 import { useAccount } from '../account'
 import { useCart } from '../cart'
-import { ProductStage } from '../components/ProductStage'
+import { ProductStage, type BodyMotion } from '../components/ProductStage'
 import { DEMO_SIZE_CHART, estimatedChestCm, fitFor, fitGloss } from '../lib/fit'
 import { TEE_COLORS, defaultTeeColor } from '../teeColors'
 import { money, type Product } from '../types'
@@ -55,6 +55,7 @@ export function ProductPage() {
   const [variantId, setVariantId] = useState<number | null>(null)
   const [added, setAdded] = useState(false)
   const [color, setColor] = useState(() => defaultTeeColor(handle))
+  const [motion, setMotion] = useState<BodyMotion>('diam')
   const [addError, setAddError] = useState('')
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export function ProductPage() {
     setAdded(false)
     setError('')
     setColor(defaultTeeColor(handle))
+    setMotion('diam')
     fetchProduct(handle)
       .then((next) => {
         setProduct(next)
@@ -116,7 +118,14 @@ export function ProductPage() {
             data-chest={chest}
             data-fit={fit ?? ''}
           >
-            <ProductStage kind={product.kind} handle={product.handle} heightCm={heightCm} weightKg={weightKg} />
+            <ProductStage
+              kind={product.kind}
+              handle={product.handle}
+              heightCm={heightCm}
+              weightKg={weightKg}
+              color={color}
+              motion={motion}
+            />
           </div>
         </div>
         {product.kind === 'tee' && fit && (
@@ -142,9 +151,37 @@ export function ProductPage() {
         )}
         <p className="stage-caption">
           {product.kind === 'tee'
-            ? 'Drag to orbit. Height stretches the body vertically. Weight changes chest and waist width. The body is an estimate, not a body scan.'
+            ? 'Drag to orbit. Height stretches the body vertically. Weight changes chest and waist width. This is a demo, not a body scan.'
             : 'Drag to rotate. The frame is a preview — the print ships unframed.'}
         </p>
+        {product.kind === 'tee' && (
+          <>
+            <div className="anim-picker" role="group" aria-label="Animation">
+              {(
+                [
+                  ['diam', 'Diam'],
+                  ['putar', 'Putar'],
+                  ['jalan', 'Jalan'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={motion === id ? 'size on' : 'size'}
+                  aria-pressed={motion === id}
+                  onClick={() => setMotion(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="stage-caption credits">
+              Body: CC0. Source:{' '}
+              <a href="https://orange-juice-games.itch.io/male-base-mesh">orange-juice-games</a>. Shirt: T Shirt by{' '}
+              <a href="https://poly.pizza/m/oZOt671DyI">Nour</a>, CC BY.
+            </p>
+          </>
+        )}
         {product.kind === 'tee' && (
           <div className="char-panel">
             <p className="demo-account">This is a demo, not a real account. Characters stay in this browser only.</p>

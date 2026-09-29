@@ -1,19 +1,31 @@
-import { Component, Suspense, use, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Component, Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, useGLTF } from '@react-three/drei'
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import * as THREE from 'three'
-import { applyBodyScale, createBodyGeometry, shirtMountTransform } from '../lib/bodyMesh'
+import { chestWidthScale, heightScale } from '../lib/fit'
 
 const FRAME_URL = '/models/frame.glb'
+const BODY_URL = '/models/body.glb'
+const SHIRT_URL = '/models/shirt.glb'
 
 useGLTF.preload(FRAME_URL)
+useGLTF.preload(BODY_URL)
+useGLTF.preload(SHIRT_URL)
+
+export type BodyMotion = 'diam' | 'putar' | 'jalan'
 
 type StageProps = {
   kind: 'poster' | 'tee'
   handle: string
   heightCm?: number
   weightKg?: number
+  color?: string
+  motion?: BodyMotion
 }
+
+const X_AXIS = new THREE.Vector3(1, 0, 0)
+const Y_AXIS = new THREE.Vector3(0, 1, 0)
 
 class StageBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -38,98 +50,186 @@ function cloneWithMaterials(scene: THREE.Object3D) {
   return clone
 }
 
-function BodyMesh({ heightCm, weightKg }: { heightCm: number; weightKg: number }) {
-  const geometry = useMemo(() => createBodyGeometry(), [])
-
-  useLayoutEffect(() => {
-    applyBodyScale(geometry, heightCm, weightKg)
-  }, [geometry, heightCm, weightKg])
-
-  useEffect(() => () => geometry.dispose(), [geometry])
-
-  return (
-    <mesh geometry={geometry} name="EstimatedBody">
-      <meshStandardMaterial color="#d9c6b6" roughness={0.74} metalness={0} />
-    </mesh>
-  )
+function quatDelta(bone: THREE.Bone, axis: THREE.Vector3, angle: number) {
+  const q = bone.quaternion.clone()
+  q.multiply(new THREE.Quaternion().setFromAxisAngle(axis, angle))
+  return q
 }
 
-function waitingLabel() {
-  const canvas = document.createElement('canvas')
-  canvas.width = 640
-  canvas.height = 160
-  const context = canvas.getContext('2d')
-  if (!context) return null
-  context.fillStyle = 'rgba(255,255,255,0.94)'
-  context.fillRect(0, 0, 640, 160)
-  context.strokeStyle = '#4e4943'
-  context.lineWidth = 6
-  context.setLineDash([14, 10])
-  context.strokeRect(8, 8, 624, 144)
-  context.setLineDash([])
-  context.fillStyle = '#171717'
-  context.font = '600 46px Inter, Helvetica, Arial, sans-serif'
-  context.textAlign = 'center'
-  context.textBaseline = 'middle'
-  context.fillText('Shirt file is waiting', 320, 80)
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  texture.needsUpdate = true
-  return texture
+function quatTrack(bone: THREE.Bone, times: number[], angles: number[], axis: THREE.Vector3) {
+  const values: number[] = []
+  for (const angle of angles) {
+    const q = quatDelta(bone, axis, angle)
+    values.push(q.x, q.y, q.z, q.w)
+  }
+  return new THREE.QuaternionKeyframeTrack(`${bone.name}.quaternion`, times, values)
 }
 
-function ShirtMount({ heightCm, weightKg }: { heightCm: number; weightKg: number }) {
-  const mount = useMemo(() => {
-    const place = shirtMountTransform(heightCm, weightKg)
-    const w = place.width / 2
-    const h = place.height / 2
-    const frame = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-w, -h, 0),
-        new THREE.Vector3(w, -h, 0),
-        new THREE.Vector3(w, h, 0),
-        new THREE.Vector3(-w, h, 0),
-        new THREE.Vector3(-w, -h, 0),
-      ]),
-      new THREE.LineBasicMaterial({ color: '#4e4943' }),
-    )
-    frame.name = 'ShirtMountFrame'
-    frame.position.set(place.position[0], place.position[1], place.position[2])
+function poseClips(skinned: THREE.SkinnedMesh) {
+  const bone = (name: string) => {
+    const found = skinned.skeleton.getBoneByName(name)
+    if (!found) throw new Error(`missing bone ${name}`)
+    return found
+  }
+  const chest = bone('spine003')
+  const ribs = bone('spine002')
+  const hips = bone('spine')
+  const thighL = bone('thighL')
+  const thighR = bone('thighR')
+  const shinL = bone('shinL')
+  const shinR = bone('shinR')
+  return [
+    new THREE.AnimationClip('diam', 2.6, [
+      quatTrack(chest, [0, 1.3, 2.6], [0, 0.09, 0], X_AXIS),
+      quatTrack(ribs, [0, 1.3, 2.6], [0, 0.035, 0], X_AXIS),
+    ]),
+    new THREE.AnimationClip('putar', 4, [
+      quatTrack(hips, [0, 1, 2, 3, 4], [0, 0.5, 0, -0.5, 0], Y_AXIS),
+    ]),
+    new THREE.AnimationClip('jalan', 1.2, [
+      quatTrack(thighL, [0, 0.6, 1.2], [-0.55, 0.4, -0.55], X_AXIS),
+      quatTrack(thighR, [0, 0.6, 1.2], [0.4, -0.55, 0.4], X_AXIS),
+      quatTrack(shinL, [0, 0.6, 1.2], [0.55, 0.12, 0.55], X_AXIS),
+      quatTrack(shinR, [0, 0.6, 1.2], [0.12, 0.55, 0.12], X_AXIS),
+    ]),
+  ]
+}
 
-    const map = waitingLabel()
-    const group = new THREE.Group()
-    group.name = 'ShirtMount'
-    group.add(frame)
-    if (map) {
-      const sprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false }),
-      )
-      sprite.name = 'ShirtMountLabel'
-      sprite.renderOrder = 10
-      sprite.position.set(place.position[0], place.position[1], place.position[2])
-      sprite.scale.set(0.78, 0.2, 1)
-      group.add(sprite)
+function paintShirt(root: THREE.Object3D, color: string) {
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return
+    const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
+    for (const material of materials) {
+      if (material instanceof THREE.MeshStandardMaterial) material.color.set(color)
     }
-    return group
-  }, [heightCm, weightKg])
+  })
+}
+
+type RigHandle = {
+  stand: THREE.Group
+  mixer: THREE.AnimationMixer
+  actions: Record<BodyMotion, THREE.AnimationAction>
+  shirt: THREE.Object3D
+  applyWeight: (weightKg: number) => void
+}
+
+function assembleRig(bodyScene: THREE.Object3D, shirtScene: THREE.Object3D): RigHandle {
+  const rig = cloneSkeleton(bodyScene)
+  let skinned: THREE.SkinnedMesh | null = null
+  rig.traverse((obj) => {
+    if (obj instanceof THREE.SkinnedMesh) skinned = obj
+  })
+  if (!skinned) throw new Error('body mesh missing')
+  const mesh = skinned as THREE.SkinnedMesh
+  mesh.material = new THREE.MeshStandardMaterial({ color: '#e0b8a2', roughness: 0.68, metalness: 0 })
+  mesh.frustumCulled = false
+  mesh.castShadow = false
+
+  const shirt = cloneWithMaterials(shirtScene)
+  shirt.traverse((obj) => {
+    if (obj instanceof THREE.Mesh) {
+      obj.frustumCulled = false
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
+      for (const material of materials) {
+        if (material instanceof THREE.MeshStandardMaterial) {
+          material.roughness = 0.86
+          material.metalness = 0
+          material.side = THREE.DoubleSide
+          material.map = null
+        }
+      }
+    }
+  })
+  const chest = mesh.skeleton.getBoneByName('spine003')
+  if (!chest) throw new Error('missing chest bone')
+  const shirtScale = new THREE.Vector3(1.08, 1.52, 1.85)
+  shirt.scale.copy(shirtScale)
+  shirt.position.set(0, -0.683 * shirtScale.y + 0.02, -0.007 * shirtScale.z + 0.045)
+  chest.add(shirt)
+
+  const baseScale = new Map<THREE.Bone, THREE.Vector3>()
+  for (const bone of mesh.skeleton.bones) baseScale.set(bone, bone.scale.clone())
+
+  const girth = (name: string, factor: number) => {
+    const bone = mesh.skeleton.getBoneByName(name)
+    if (!bone) return
+    const base = baseScale.get(bone)
+    if (!base) return
+    bone.scale.set(base.x * factor, base.y, base.z * factor)
+    for (const child of bone.children) {
+      if (!(child instanceof THREE.Bone)) continue
+      const childBase = baseScale.get(child)
+      if (!childBase) continue
+      child.scale.set(childBase.x / factor, childBase.y, childBase.z / factor)
+    }
+  }
+
+  const applyWeight = (weightKg: number) => {
+    const factor = chestWidthScale(weightKg)
+    for (const bone of mesh.skeleton.bones) {
+      const base = baseScale.get(bone)
+      if (base) bone.scale.copy(base)
+    }
+    girth('spine001', factor)
+    girth('spine003', factor)
+  }
+
+  const mixer = new THREE.AnimationMixer(rig)
+  const actions = {} as Record<BodyMotion, THREE.AnimationAction>
+  for (const clip of poseClips(mesh)) {
+    const action = mixer.clipAction(clip)
+    action.loop = THREE.LoopRepeat
+    action.clampWhenFinished = false
+    actions[clip.name as BodyMotion] = action
+  }
+
+  const stand = new THREE.Group()
+  stand.name = 'BodyRig'
+  stand.rotation.y = -Math.PI / 2
+  stand.position.y = 0.997
+  stand.add(rig)
+  return { stand, mixer, actions, shirt, applyWeight }
+}
+
+function TeeRig({
+  heightCm,
+  weightKg,
+  color,
+  motion,
+}: {
+  heightCm: number
+  weightKg: number
+  color: string
+  motion: BodyMotion
+}) {
+  const bodyGltf = useGLTF(BODY_URL)
+  const shirtGltf = useGLTF(SHIRT_URL)
+  const rig = useMemo(() => assembleRig(bodyGltf.scene, shirtGltf.scene), [bodyGltf.scene, shirtGltf.scene])
+  const playing = useRef<THREE.AnimationAction | null>(null)
 
   useEffect(() => {
-    return () => {
-      mount.traverse((obj) => {
-        if (obj instanceof THREE.Line) {
-          obj.geometry.dispose()
-          const material = obj.material
-          if (!Array.isArray(material)) material.dispose()
-        }
-        if (obj instanceof THREE.Sprite) {
-          if (obj.material.map) obj.material.map.dispose()
-          obj.material.dispose()
-        }
-      })
-    }
-  }, [mount])
+    const next = rig.actions[motion]
+    const prev = playing.current
+    if (prev && prev !== next) prev.fadeOut(0.25)
+    next.reset().setEffectiveWeight(1).fadeIn(0.25).play()
+    playing.current = next
+  }, [motion, rig])
 
-  return <primitive object={mount} />
+  useEffect(() => {
+    paintShirt(rig.shirt, color)
+  }, [color, rig])
+
+  useFrame((_, delta) => {
+    rig.mixer.update(delta)
+    rig.applyWeight(weightKg)
+  })
+
+  const hs = heightScale(heightCm)
+  return (
+    <group scale={[1, hs, 1]}>
+      <primitive object={rig.stand} />
+    </group>
+  )
 }
 
 async function rasterizeArt(url: string) {
@@ -190,7 +290,20 @@ function FrameModel({ artUrl }: { artUrl: string }) {
   )
 }
 
-function View({ kind, handle, heightCm, weightKg }: Required<StageProps>) {
+function View({
+  kind,
+  handle,
+  heightCm,
+  weightKg,
+  color,
+  motion,
+}: Required<StageProps>) {
+  const controls = useRef<React.ComponentRef<typeof OrbitControls>>(null)
+  const hs = heightScale(heightCm)
+  useLayoutEffect(() => {
+    controls.current?.target.set(0, 0.98 * hs, 0)
+  }, [hs])
+
   return (
     <>
       <hemisphereLight args={['#f7f4ee', '#3a3a3a', 0.85]} />
@@ -199,23 +312,21 @@ function View({ kind, handle, heightCm, weightKg }: Required<StageProps>) {
       <directionalLight position={[-2.4, 1.6, -1.8]} intensity={0.55} />
       <Suspense fallback={null}>
         {kind === 'tee' ? (
-          <group>
-            <BodyMesh heightCm={heightCm} weightKg={weightKg} />
-            <ShirtMount heightCm={heightCm} weightKg={weightKg} />
-          </group>
+          <TeeRig heightCm={heightCm} weightKg={weightKg} color={color} motion={motion} />
         ) : (
           <FrameModel artUrl={`/products/${handle}.svg`} />
         )}
       </Suspense>
       <OrbitControls
+        ref={controls}
         makeDefault
         enablePan={false}
         enableRotate
         enableDamping
         rotateSpeed={0.85}
-        target={kind === 'tee' ? [0, 0.92, 0] : [0, 0, 0]}
-        minDistance={kind === 'tee' ? 2.2 : 1.6}
-        maxDistance={kind === 'tee' ? 7.5 : 4.2}
+        target={kind === 'tee' ? [0, 0.98 * hs, 0] : [0, 0, 0]}
+        minDistance={kind === 'tee' ? 2.4 : 1.6}
+        maxDistance={kind === 'tee' ? 8 : 4.2}
         minPolarAngle={0.25}
         maxPolarAngle={Math.PI - 0.25}
       />
@@ -223,10 +334,18 @@ function View({ kind, handle, heightCm, weightKg }: Required<StageProps>) {
   )
 }
 
-export function ProductStage({ kind, handle, heightCm = 175, weightKg = 70 }: StageProps) {
+export function ProductStage({
+  kind,
+  handle,
+  heightCm = 175,
+  weightKg = 70,
+  color = '#2c3338',
+  motion = 'diam',
+}: StageProps) {
+  const hs = heightScale(heightCm)
   const camera =
     kind === 'tee'
-      ? { position: [1.05, 1.15, 3.35] as [number, number, number], fov: 32 }
+      ? { position: [1.15, 1.05 * hs, 4.15] as [number, number, number], fov: 32 }
       : { position: [0.55, 0.15, 2.25] as [number, number, number], fov: 35 }
 
   const fallback = <div className="stage-fallback">3D preview unavailable</div>
@@ -247,7 +366,7 @@ export function ProductStage({ kind, handle, heightCm = 175, weightKg = 70 }: St
           preserveDrawingBuffer: true,
         }}
       >
-        <View kind={kind} handle={handle} heightCm={heightCm} weightKg={weightKg} />
+        <View kind={kind} handle={handle} heightCm={heightCm} weightKg={weightKg} color={color} motion={motion} />
       </Canvas>
     </StageBoundary>
   )

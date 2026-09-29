@@ -10,6 +10,7 @@ import { Home } from './pages/Home'
 import { NotFound } from './pages/NotFound'
 import { OrderPage } from './pages/Order'
 import { ProductPage } from './pages/Product'
+import { SellerPage } from './pages/Seller'
 
 function ScrollTop() {
   const { pathname } = useLocation()
@@ -32,6 +33,7 @@ export function App() {
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/orders/:publicId" element={<OrderPage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/produk-saya" element={<SellerPage />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Route>

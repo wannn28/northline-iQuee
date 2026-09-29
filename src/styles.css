@@ -348,3 +348,13 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
 .fabric-field { margin-top: 14px; max-width: 440px; }
 .local-preview { margin-top: 6px; }
 html { scroll-padding-top: 112px; }
+
+.garment-picker .size { display: flex; flex-direction: column; align-items: flex-start; height: auto; }
+.garment-picker .size small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.seller-form h2, .seller h2 { font-size: 18px; margin: 0 0 12px; }
+.seller-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.seller-list li { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; }
+.seller-list img, .seller-thumbs img { width: 56px; height: 56px; object-fit: cover; border-radius: 4px; background: #eee; }
+.seller-thumbs { display: flex; gap: 8px; margin: 8px 0 12px; }
+.seller-list p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.swatch.plain { display: inline-block; width: 56px; height: 56px; border-radius: 4px; background: #2c3338; }

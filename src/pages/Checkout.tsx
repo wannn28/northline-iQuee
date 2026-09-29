@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { checkout } from '../api'
 import { shippingCents, useCart } from '../cart'
+import { shellLabel } from '../lib/shell'
 import { money } from '../types'
 
 const STATES = [
@@ -167,11 +168,17 @@ export function Checkout() {
         <aside className="summary">
           <h2>Order summary</h2>
           {lines.map((line) => (
-            <div className="line" key={line.variantId}>
-              <img src={`/products/${line.handle}.svg`} alt="" />
+            <div className="line" key={`${line.sellerProductId ?? 'shop'}:${line.variantId}`}>
+              <img src={line.frontImage || `/products/${line.handle}.svg`} alt="" />
               <div>
-                <strong>{line.title}</strong>
-                <p>{line.label} · Qty {line.qty}</p>
+                <strong>{line.sellerName ?? line.title}</strong>
+                <p>
+                  {line.label}
+                  {line.shell ? ` · ${shellLabel(line.shell)}` : ''}
+                  {line.fit ? ` · ${line.fit}` : ''}
+                  {line.lengthCm ? ` · ${line.lengthCm} cm` : ''}
+                  {' · '}Qty {line.qty}
+                </p>
               </div>
               <span>{money(line.unitCents * line.qty)}</span>
             </div>

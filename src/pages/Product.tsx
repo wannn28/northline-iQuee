@@ -1,9 +1,11 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fetchProduct } from '../api'
 import { useAccount } from '../account'
 import { useCart } from '../cart'
-import { ProductStage, type BodyMotion, type Garment } from '../components/ProductStage'
+import { shellLabel } from '../lib/shell'
+import { useSeller } from '../seller'
+import { ProductStage, type BodyMotion } from '../components/ProductStage'
 import { DEMO_SIZE_CHART, estimatedChestCm, fitFor, fitGloss } from '../lib/fit'
 import { TEE_COLORS, defaultTeeColor } from '../teeColors'
 import { money, type Product } from '../types'
@@ -50,15 +52,14 @@ export function ProductPage() {
   const { handle = '' } = useParams()
   const { add } = useCart()
   const account = useAccount()
+  const seller = useSeller()
   const [product, setProduct] = useState<Product | null>(null)
   const [error, setError] = useState('')
   const [variantId, setVariantId] = useState<number | null>(null)
   const [added, setAdded] = useState(false)
   const [color, setColor] = useState(() => defaultTeeColor(handle))
   const [motion, setMotion] = useState<BodyMotion>('diam')
-  const [garment, setGarment] = useState<Garment>('short')
-  const [frontUrl, setFrontUrl] = useState<string | null>(null)
-  const [backUrl, setBackUrl] = useState<string | null>(null)
+  const [sellerId, setSellerId] = useState<string | null>(null)
   const [addError, setAddError] = useState('')
 
   useEffect(() => {
@@ -67,15 +68,7 @@ export function ProductPage() {
     setError('')
     setColor(defaultTeeColor(handle))
     setMotion('diam')
-    setGarment('short')
-    setFrontUrl((current) => {
-      if (current) URL.revokeObjectURL(current)
-      return null
-    })
-    setBackUrl((current) => {
-      if (current) URL.revokeObjectURL(current)
-      return null
-    })
+    setSellerId(null)
     fetchProduct(handle)
       .then((next) => {
         setProduct(next)
@@ -105,24 +98,11 @@ export function ProductPage() {
   const weightKg = account.active?.weightKg ?? 70
   const chest = estimatedChestCm(weightKg)
   const fit = product.kind === 'tee' && variant ? fitFor(variant.label, chest) : null
+  const chosen =
+    product.kind === 'tee'
+      ? seller.products.find((item) => item.id === sellerId) ?? seller.products[0] ?? null
+      : null
 
-
-  function onSideFile(side: 'front' | 'back') {
-    return (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0]
-      if (!file) return
-      const name = file.name.toLowerCase()
-      const png = file.type === 'image/png' || name.endsWith('.png')
-      const jpeg = file.type === 'image/jpeg' || name.endsWith('.jpg') || name.endsWith('.jpeg')
-      if (!png && !jpeg) return
-      const url = URL.createObjectURL(file)
-      const setUrl = side === 'front' ? setFrontUrl : setBackUrl
-      setUrl((current) => {
-        if (current) URL.revokeObjectURL(current)
-        return url
-      })
-    }
-  }
 
   function onAddCharacter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -151,7 +131,9 @@ export function ProductPage() {
             data-fit={fit ?? ''}
             data-character={account.active?.id ?? ''}
             data-gender={account.active?.gender ?? 'male'}
-            data-garment={garment}
+            data-garment={chosen?.shell ?? ''}
+            data-length={chosen?.lengthCm ?? ''}
+            data-seller={chosen?.id ?? ''}
           >
             <ProductStage
               kind={product.kind}
@@ -160,9 +142,11 @@ export function ProductPage() {
               weightKg={weightKg}
               color={color}
               motion={motion}
-              garment={garment}
-              frontUrl={frontUrl}
-              backUrl={backUrl}
+              garment={chosen?.shell ?? 'short'}
+              lengthCm={chosen?.lengthCm ?? 70}
+              shellOn={Boolean(chosen)}
+              frontUrl={chosen?.frontImage ?? null}
+              backUrl={chosen?.backImage ?? null}
             />
           </div>
         </div>
@@ -183,25 +167,36 @@ export function ProductPage() {
                 No separate CC0 female base mesh is loaded, so the body shown is still the CC0 male mesh.
               </p>
             ) : null}
-            <div className="garment-picker" role="group" aria-label="Garment">
-              {(
-                [
-                  ['short', 'Short sleeve'],
-                  ['long', 'Long sleeve'],
-                  ['button', 'Button shirt'],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={garment === id ? 'size on' : 'size'}
-                  aria-pressed={garment === id}
-                  onClick={() => setGarment(id)}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="garment-picker" role="group" aria-label="Seller products">
+              {seller.products.length === 0 ? (
+                <p className="stage-caption">
+                  No seller products in this browser. Add one on <Link to="/produk-saya">Produk saya</Link>.
+                </p>
+              ) : (
+                seller.products.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={chosen?.id === item.id ? 'size on' : 'size'}
+                    aria-pressed={chosen?.id === item.id}
+                    onClick={() => {
+                      setSellerId(item.id)
+                      setAdded(false)
+                    }}
+                  >
+                    {item.name}
+                    <small>
+                      {shellLabel(item.shell)} · {item.lengthCm} cm
+                    </small>
+                  </button>
+                ))
+              )}
             </div>
+            {chosen && (
+              <p className="stage-caption">
+                {chosen.name}: {shellLabel(chosen.shell)}, hem {chosen.lengthCm} cm. Length is set by the seller.
+              </p>
+            )}
             <div className="anim-picker" role="group" aria-label="Animation">
               {(
                 [
@@ -221,27 +216,6 @@ export function ProductPage() {
                 </button>
               ))}
             </div>
-            <div className="fabric-row">
-              <label className="field fabric-field">
-                <span>Front image</span>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,.png,.jpg,.jpeg"
-                  onChange={onSideFile('front')}
-                />
-              </label>
-              <label className="field fabric-field">
-                <span>Back image</span>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,.png,.jpg,.jpeg"
-                  onChange={onSideFile('back')}
-                />
-              </label>
-            </div>
-            <p className="stage-caption local-preview">
-              Front and back images are only a local preview. They stay in this browser and are not uploaded. Sides stay the solid color until an image covers that region.
-            </p>
             <p className="stage-caption credits">
               Body: CC0. Source:{' '}
               <a href="https://orange-juice-games.itch.io/male-base-mesh">orange-juice-games</a>.
@@ -402,16 +376,34 @@ export function ProductPage() {
         <button
           className="btn full"
           type="button"
-          disabled={!variant}
+          disabled={!variant || (product.kind === 'tee' && !chosen)}
           onClick={() => {
             if (!variant) return
-            add({
-              variantId: variant.id,
-              handle: product.handle,
-              title: product.title,
-              label: variant.label,
-              unitCents: variant.price_cents,
-            })
+            if (product.kind === 'tee') {
+              if (!chosen || !fit) return
+              add({
+                variantId: variant.id,
+                handle: product.handle,
+                title: product.title,
+                label: variant.label,
+                unitCents: variant.price_cents,
+                sellerProductId: chosen.id,
+                sellerName: chosen.name,
+                shell: chosen.shell,
+                lengthCm: chosen.lengthCm,
+                frontImage: chosen.frontImage,
+                backImage: chosen.backImage,
+                fit,
+              })
+            } else {
+              add({
+                variantId: variant.id,
+                handle: product.handle,
+                title: product.title,
+                label: variant.label,
+                unitCents: variant.price_cents,
+              })
+            }
             setAdded(true)
           }}
         >
@@ -419,7 +411,8 @@ export function ProductPage() {
         </button>
         {added && variant && (
           <p className="added">
-            Added {product.title}, {variant.label}. <Link to="/cart">View cart</Link>
+            Added {chosen?.name ?? product.title}, {variant.label}
+            {fit ? `, ${fit}` : ''}. <Link to="/cart">View cart</Link>
           </p>
         )}
         <p className="details" style={{ marginTop: 18 }}>

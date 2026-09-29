@@ -4,6 +4,7 @@ import { OrbitControls, useGLTF } from '@react-three/drei'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import * as THREE from 'three'
 import { chestWidthScale, heightScale } from '../lib/fit'
+import { LENGTH_MAX, LENGTH_MIN, type Garment } from '../lib/shell'
 
 const FRAME_URL = '/models/frame.glb'
 // CC0 male base mesh (male_base_mesh.glb from BoQsc/Godot-3D-Male-Base-Mesh 1.0.2).
@@ -13,7 +14,7 @@ useGLTF.preload(FRAME_URL)
 useGLTF.preload(BODY_URL)
 
 export type BodyMotion = 'diam' | 'putar' | 'jalan'
-export type Garment = 'short' | 'long' | 'button'
+export type { Garment } from '../lib/shell'
 
 type StageProps = {
   kind: 'poster' | 'tee'
@@ -23,11 +24,13 @@ type StageProps = {
   color?: string
   motion?: BodyMotion
   garment?: Garment
+  lengthCm?: number
+  shellOn?: boolean
   frontUrl?: string | null
   backUrl?: string | null
 }
 
-const GARMENTS: Garment[] = ['short', 'long', 'button']
+const GARMENTS: Garment[] = ['short', 'long', 'button', 'sleeveless']
 const X_AXIS = new THREE.Vector3(1, 0, 0)
 const Y_AXIS = new THREE.Vector3(0, 1, 0)
 const _qa = new THREE.Quaternion()
@@ -36,8 +39,17 @@ const TORSO_BONES = new Set(['spine001', 'spine002', 'spine003', 'shoulderL', 's
 const SHELL_OFFSET = 0.014
 const SLEEVE_T = 0.46
 const NECK_Y = 0.7
-const HEM_Y = 0.08
+const WAIST_HEM = 0.12
+const THIGH_HEM = -0.16
 const FRONT_NX = 0.22
+const LOWER_BONES = new Set(['spine', 'pelvisL', 'pelvisR', 'thighL', 'thighR'])
+
+/** Hem only. Shortest sits at the waist, longest reaches the upper thigh. */
+function hemYForLength(lengthCm: number) {
+  const span = LENGTH_MAX - LENGTH_MIN
+  const t = clamp01((lengthCm - LENGTH_MIN) / span)
+  return WAIST_HEM + (THIGH_HEM - WAIST_HEM) * t
+}
 
 const WHITE = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
 WHITE.colorSpace = THREE.SRGBColorSpace
@@ -211,7 +223,7 @@ function clamp01(n: number) {
  * Skinned garment carved from the CC0 body. One shell per style, same skeleton.
  * UVs: front image on the front, back image on the back, sides stay untextured.
  */
-function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment) {
+function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment, hemY: number) {
   const source = mesh.geometry
   const position = source.getAttribute('position') as THREE.BufferAttribute
   const normal = source.getAttribute('normal') as THREE.BufferAttribute
@@ -246,15 +258,17 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment) {
 
   const names = mesh.skeleton.bones.map((bone) => bone.name)
   const keep = new Uint8Array(position.count)
-  const longArm = garment !== 'short'
+  const longArm = garment === 'long' || garment === 'button'
+  const sleeveless = garment === 'sleeveless'
   for (let vertex = 0; vertex < position.count; vertex += 1) {
     const bone = dominantBone(names, skinIndex, skinWeight, vertex)
     const y = position.getY(vertex)
-    if (y >= NECK_Y || y <= HEM_Y) continue
-    if (TORSO_BONES.has(bone)) {
+    if (y >= NECK_Y || y <= hemY) continue
+    if (TORSO_BONES.has(bone) || LOWER_BONES.has(bone)) {
       keep[vertex] = 1
       continue
     }
+    if (sleeveless) continue
     if (bone === 'upper_armL' || bone === 'upper_armR') {
       if (longArm || sleeveT(position.getX(vertex), y, position.getZ(vertex)) < SLEEVE_T) keep[vertex] = 1
       continue
@@ -296,7 +310,7 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment) {
       vert.skinI[slot] = skinIndex.getComponent(vertex, slot)
       vert.skinW[slot] = skinWeight.getComponent(vertex, slot)
     }
-    assignUv(vert, region, sleeve, wristT, aroundArm)
+    assignUv(vert, region, sleeve, wristT, aroundArm, hemY)
     remap[vertex] = verts.length
     verts.push(vert)
   }
@@ -340,7 +354,7 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment) {
         region: pick,
         sleeve: asSleeve,
       }
-      assignUv(copy, pick, asSleeve, wristT, aroundArm)
+      assignUv(copy, pick, asSleeve, wristT, aroundArm, hemY)
       verts.push(copy)
       return verts.length - 1
     })
@@ -359,7 +373,7 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment) {
   }
   if (indices.length < 30) throw new Error('garment shell is empty')
 
-  if (garment === 'button') addCollar(verts, indices, wristT, aroundArm)
+  if (garment === 'button') addCollar(verts, indices, wristT, aroundArm, hemY)
 
   const positions = new Float32Array(verts.length * 3)
   const normals = new Float32Array(verts.length * 3)
@@ -401,6 +415,7 @@ function assignUv(
   asSleeve: boolean,
   wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
   aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  hemY: number,
 ) {
   vert.region = region
   if (region === 0) {
@@ -408,7 +423,7 @@ function assignUv(
     vert.v = 0
     return
   }
-  const height = clamp01((vert.y - HEM_Y) / (0.66 - HEM_Y))
+  const height = clamp01((vert.y - hemY) / (0.66 - hemY))
   if (!asSleeve) {
     if (region === 1) {
       const ang = Math.atan2(vert.z, Math.max(vert.x, 0.02))
@@ -433,6 +448,7 @@ function addCollar(
   indices: number[],
   wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
   aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  hemY: number,
 ) {
   const edge = new Map<string, number>()
   const key = (a: number, b: number) => (a < b ? `${a}|${b}` : `${b}|${a}`)
@@ -458,7 +474,7 @@ function addCollar(
       sleeve: false,
     }
     copy.region = copy.nx > FRONT_NX ? 1 : copy.nx < -FRONT_NX ? 2 : 0
-    assignUv(copy, copy.region, false, wristT, aroundArm)
+    assignUv(copy, copy.region, false, wristT, aroundArm, hemY)
     verts.push(copy)
     const next = verts.length - 1
     raised.set(id, next)
@@ -489,6 +505,7 @@ type RigHandle = {
   shells: Record<Garment, THREE.SkinnedMesh>
   shellMat: THREE.MeshStandardMaterial
   applyWeight: (weightKg: number) => void
+  applyLength: (lengthCm: number) => void
   time: number
 }
 
@@ -575,7 +592,7 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
   const shellMat = createClothMaterial('#2c3338')
   const shells = {} as Record<Garment, THREE.SkinnedMesh>
   for (const garment of GARMENTS) {
-    const shell = new THREE.SkinnedMesh(buildGarment(mesh, garment), shellMat)
+    const shell = new THREE.SkinnedMesh(buildGarment(mesh, garment, hemYForLength(70)), shellMat)
     shell.name = `TeeShell-${garment}`
     shell.frustumCulled = false
     shell.castShadow = false
@@ -613,6 +630,17 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
     girth('spine003', factor)
   }
 
+  const applyLength = (lengthCm: number) => {
+    const hem = hemYForLength(lengthCm)
+    for (const garment of GARMENTS) {
+      const shell = shells[garment]
+      const next = buildGarment(mesh, garment, hem)
+      shell.geometry.dispose()
+      shell.geometry = next
+    }
+    mesh.visible = true
+  }
+
   const clips = {} as Record<BodyMotion, THREE.AnimationClip>
   const samples = {} as Record<BodyMotion, ClipSample[]>
   for (const clip of poseClips(mesh)) {
@@ -633,7 +661,7 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
   stand.rotation.y = -Math.PI / 2
   stand.position.y = 0.997
   stand.add(rig)
-  return { stand, bones: mesh.skeleton.bones, baseQuat, boneByName, clips, samples, shells, shellMat, applyWeight, time: 0 }
+  return { stand, bones: mesh.skeleton.bones, baseQuat, boneByName, clips, samples, shells, shellMat, applyWeight, applyLength, time: 0 }
 }
 
 function paintShell(material: THREE.MeshStandardMaterial, color: string) {
@@ -659,6 +687,8 @@ function TeeRig({
   color,
   motion,
   garment,
+  lengthCm,
+  shellOn,
   frontUrl,
   backUrl,
 }: {
@@ -667,6 +697,8 @@ function TeeRig({
   color: string
   motion: BodyMotion
   garment: Garment
+  lengthCm: number
+  shellOn: boolean
   frontUrl: string | null
   backUrl: string | null
 }) {
@@ -681,8 +713,12 @@ function TeeRig({
   }, [motion, rig])
 
   useEffect(() => {
-    for (const kind of GARMENTS) rig.shells[kind].visible = kind === garment
-  }, [garment, rig])
+    for (const kind of GARMENTS) rig.shells[kind].visible = shellOn && kind === garment
+  }, [garment, rig, shellOn])
+
+  useEffect(() => {
+    rig.applyLength(lengthCm)
+  }, [lengthCm, rig])
 
   useEffect(() => {
     let alive = true
@@ -831,6 +867,8 @@ function View({
   color,
   motion,
   garment,
+  lengthCm,
+  shellOn,
   frontUrl,
   backUrl,
 }: Required<StageProps>) {
@@ -854,6 +892,8 @@ function View({
             color={color}
             motion={motion}
             garment={garment}
+            lengthCm={lengthCm}
+            shellOn={shellOn}
             frontUrl={frontUrl}
             backUrl={backUrl}
           />
@@ -886,6 +926,8 @@ export function ProductStage({
   color = '#2c3338',
   motion = 'diam',
   garment = 'short',
+  lengthCm = 70,
+  shellOn = true,
   frontUrl = null,
   backUrl = null,
 }: StageProps) {
@@ -920,6 +962,8 @@ export function ProductStage({
           color={color}
           motion={motion}
           garment={garment}
+          lengthCm={lengthCm}
+          shellOn={shellOn}
           frontUrl={frontUrl}
           backUrl={backUrl}
         />

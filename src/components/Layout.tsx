@@ -18,6 +18,7 @@ export function Layout() {
             <NavLink to="/collections/all">Shop</NavLink>
             <NavLink to="/collections/posters">Posters</NavLink>
             <NavLink to="/collections/tees">Tees</NavLink>
+            <NavLink to="/produk-saya">Produk saya</NavLink>
           </nav>
           <div className="tools">
             <NavLink to="/account">{email ? 'Account' : 'Log in'}</NavLink>

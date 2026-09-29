@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import { shippingCents, useCart } from '../cart'
+import { lineKey, shippingCents, useCart } from '../cart'
+import { shellLabel } from '../lib/shell'
 import { money } from '../types'
 
 export function CartPage() {
@@ -20,20 +21,25 @@ export function CartPage() {
       ) : (
         <div className="cart-list">
           {lines.map((line) => (
-            <div className="line" key={line.variantId}>
-              <img src={`/products/${line.handle}.svg`} alt="" />
+            <div className="line" key={lineKey(line)}>
+              <img src={line.frontImage || `/products/${line.handle}.svg`} alt="" />
               <div>
                 <h2>
-                  <Link to={`/products/${line.handle}`}>{line.title}</Link>
+                  <Link to={`/products/${line.handle}`}>{line.sellerName ?? line.title}</Link>
                 </h2>
-                <p>{line.label}</p>
+                <p>
+                  {line.label}
+                  {line.shell ? ` · ${shellLabel(line.shell)}` : ''}
+                  {line.fit ? ` · ${line.fit}` : ''}
+                  {line.lengthCm ? ` · ${line.lengthCm} cm` : ''}
+                </p>
                 <div className="line-actions">
                   <div className="qty">
-                    <button type="button" onClick={() => setQty(line.variantId, line.qty - 1)} aria-label="Decrease quantity">−</button>
+                    <button type="button" onClick={() => setQty(lineKey(line), line.qty - 1)} aria-label="Decrease quantity">−</button>
                     <span>{line.qty}</span>
-                    <button type="button" onClick={() => setQty(line.variantId, Math.min(9, line.qty + 1))} aria-label="Increase quantity">+</button>
+                    <button type="button" onClick={() => setQty(lineKey(line), Math.min(9, line.qty + 1))} aria-label="Increase quantity">+</button>
                   </div>
-                  <button className="linkish" type="button" onClick={() => remove(line.variantId)}>Remove</button>
+                  <button className="linkish" type="button" onClick={() => remove(lineKey(line))}>Remove</button>
                 </div>
               </div>
               <strong>{money(line.unitCents * line.qty)}</strong>

@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { FitWord } from './lib/fit'
+import { isGarment, type Garment } from './lib/shell'
 
 export type CartLine = {
   variantId: number
@@ -7,6 +9,17 @@ export type CartLine = {
   label: string
   unitCents: number
   qty: number
+  sellerProductId?: string
+  sellerName?: string
+  shell?: Garment
+  lengthCm?: number
+  frontImage?: string | null
+  backImage?: string | null
+  fit?: FitWord
+}
+
+export function lineKey(line: { variantId: number; sellerProductId?: string }) {
+  return line.sellerProductId ? `${line.sellerProductId}:${line.variantId}` : `shop:${line.variantId}`
 }
 
 type CartApi = {
@@ -14,8 +27,8 @@ type CartApi = {
   count: number
   subtotal: number
   add: (line: Omit<CartLine, 'qty'>, qty?: number) => void
-  setQty: (variantId: number, qty: number) => void
-  remove: (variantId: number) => void
+  setQty: (key: string, qty: number) => void
+  remove: (key: string) => void
   clear: () => void
 }
 
@@ -28,7 +41,18 @@ function load(): CartLine[] {
     if (!raw) return []
     const parsed = JSON.parse(raw) as CartLine[]
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((line) => line && Number.isInteger(line.variantId) && line.qty > 0)
+    return parsed
+      .filter((line) => line && Number.isInteger(line.variantId) && line.qty > 0)
+      .map((line) => ({
+        ...line,
+        shell: isGarment(line.shell) ? line.shell : undefined,
+        sellerProductId: typeof line.sellerProductId === 'string' ? line.sellerProductId : undefined,
+        sellerName: typeof line.sellerName === 'string' ? line.sellerName : undefined,
+        lengthCm: Number.isFinite(Number(line.lengthCm)) ? Number(line.lengthCm) : undefined,
+        frontImage: typeof line.frontImage === 'string' ? line.frontImage : null,
+        backImage: typeof line.backImage === 'string' ? line.backImage : null,
+        fit: line.fit === 'muat' || line.fit === 'ketat' || line.fit === 'longgar' ? line.fit : undefined,
+      }))
   } catch {
     return []
   }
@@ -51,20 +75,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
       add: (line, qty = 1) => {
         setLines((current) => {
           const next = current.slice()
-          const found = next.find((item) => item.variantId === line.variantId)
+          const key = lineKey(line)
+          const found = next.find((item) => lineKey(item) === key)
           if (found) found.qty = Math.min(9, found.qty + qty)
           else next.push({ ...line, qty: Math.min(9, qty) })
           return next
         })
       },
-      setQty: (variantId, qty) => {
+      setQty: (key, qty) => {
         setLines((current) =>
           current
-            .map((line) => (line.variantId === variantId ? { ...line, qty } : line))
+            .map((line) => (lineKey(line) === key ? { ...line, qty } : line))
             .filter((line) => line.qty > 0)
         )
       },
-      remove: (variantId) => setLines((current) => current.filter((line) => line.variantId !== variantId)),
+      remove: (key) => setLines((current) => current.filter((line) => lineKey(line) !== key)),
       clear: () => setLines([]),
     }
   }, [lines])

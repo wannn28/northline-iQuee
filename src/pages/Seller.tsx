@@ -1,6 +1,26 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { GARMENT_OPTIONS, LENGTH_MAX, LENGTH_MIN, shellLabel, type Garment } from '../lib/shell'
+import { ProductStage } from '../components/ProductStage'
+import {
+  GARMENT_OPTIONS,
+  LENGTH_MAX,
+  LENGTH_MIN,
+  NECK_DEFAULT,
+  NECK_MAX,
+  NECK_MIN,
+  SLEEVE_DEFAULT,
+  SLEEVE_MAX,
+  SLEEVE_MIN,
+  WIDTH_DEFAULT,
+  WIDTH_MAX,
+  WIDTH_MIN,
+  clampLength,
+  clampNeck,
+  clampSleeve,
+  clampWidth,
+  shellLabel,
+  type Garment,
+} from '../lib/shell'
 import { useSeller } from '../seller'
 
 async function readImage(file: File): Promise<string | null> {
@@ -28,6 +48,12 @@ export function SellerPage() {
   const [error, setError] = useState('')
   const [front, setFront] = useState<string | null>(null)
   const [back, setBack] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [shell, setShell] = useState<Garment>('short')
+  const [lengthCm, setLengthCm] = useState(LENGTH_MIN)
+  const [bodyWidthCm, setBodyWidthCm] = useState(WIDTH_DEFAULT)
+  const [neckCm, setNeckCm] = useState(NECK_DEFAULT)
+  const [sleeveCm, setSleeveCm] = useState(SLEEVE_DEFAULT)
 
   async function onFile(side: 'front' | 'back', file: File | undefined) {
     if (!file) return
@@ -39,18 +65,19 @@ export function SellerPage() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const shell = String(form.get('shell') || 'short') as Garment
     const next = addProduct({
-      name: String(form.get('name') || ''),
+      name,
       shell,
-      lengthCm: Number(form.get('length')),
+      lengthCm,
+      bodyWidthCm,
+      neckCm,
+      sleeveCm,
       frontImage: front,
       backImage: back,
     })
     setError(next ?? '')
     if (!next) {
-      event.currentTarget.reset()
+      setName('')
       setFront(null)
       setBack(null)
     }
@@ -65,16 +92,16 @@ export function SellerPage() {
           This is a demo catalog. Products stay in this browser only and are not uploaded. Shoppers try them on from the tee page. They do not get this form.
         </p>
       </header>
-      <div className="account-grid">
+      <div className="seller-editor">
         <form className="seller-form" onSubmit={onSubmit}>
           <h2>New product</h2>
           <label className="field">
             <span>Name</span>
-            <input name="name" required maxLength={60} placeholder="Harbor tee" />
+            <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={60} placeholder="Harbor tee" />
           </label>
           <label className="field">
             <span>Shell</span>
-            <select name="shell" defaultValue="short">
+            <select value={shell} onChange={(event) => setShell(event.target.value as Garment)}>
               {GARMENT_OPTIONS.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label}
@@ -84,10 +111,50 @@ export function SellerPage() {
           </label>
           <label className="field">
             <span>Length (cm)</span>
-            <input name="length" type="number" min={LENGTH_MIN} max={LENGTH_MAX} defaultValue={LENGTH_MIN} required />
+            <input
+              type="number"
+              min={LENGTH_MIN}
+              max={LENGTH_MAX}
+              value={lengthCm}
+              required
+              onChange={(event) => setLengthCm(clampLength(Number(event.target.value)))}
+            />
+          </label>
+          <label className="field">
+            <span>Body width (cm)</span>
+            <input
+              type="number"
+              min={WIDTH_MIN}
+              max={WIDTH_MAX}
+              value={bodyWidthCm}
+              required
+              onChange={(event) => setBodyWidthCm(clampWidth(Number(event.target.value)))}
+            />
+          </label>
+          <label className="field">
+            <span>Neck opening (cm)</span>
+            <input
+              type="number"
+              min={NECK_MIN}
+              max={NECK_MAX}
+              value={neckCm}
+              required
+              onChange={(event) => setNeckCm(clampNeck(Number(event.target.value)))}
+            />
+          </label>
+          <label className="field">
+            <span>Sleeve opening (cm)</span>
+            <input
+              type="number"
+              min={SLEEVE_MIN}
+              max={SLEEVE_MAX}
+              value={sleeveCm}
+              required
+              onChange={(event) => setSleeveCm(clampSleeve(Number(event.target.value)))}
+            />
           </label>
           <p className="note">
-            Length only moves the hem, from the waist ({LENGTH_MIN} cm) down to the upper thigh ({LENGTH_MAX} cm).
+            Length moves the hem only, from the waist ({LENGTH_MIN} cm) to the upper thigh ({LENGTH_MAX} cm). Neck and sleeve openings are smooth circles with a thin binding. The shoulder stays covered.
           </p>
           <div className="fabric-row">
             <label className="field">
@@ -118,33 +185,62 @@ export function SellerPage() {
             Save product
           </button>
         </form>
-        <section>
-          <h2>Catalog</h2>
-          {products.length === 0 ? (
-            <p className="details">No products yet. Saved pieces show up on the tee try-on.</p>
-          ) : (
-            <ul className="seller-list">
-              {products.map((product) => (
-                <li key={product.id}>
-                  {product.frontImage ? <img src={product.frontImage} alt="" /> : <span className="swatch plain" />}
-                  <div>
-                    <strong>{product.name}</strong>
-                    <p>
-                      {shellLabel(product.shell)} · {product.lengthCm} cm
-                    </p>
-                  </div>
-                  <button className="linkish" type="button" onClick={() => removeProduct(product.id)}>
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="details">
-            <Link to="/products/northline-heavyweight-tee">Open the try-on</Link>
-          </p>
-        </section>
+        <div>
+          <h2>Preview</h2>
+          <div
+            className="media stage"
+            data-preview="seller"
+            data-garment={shell}
+            data-length={lengthCm}
+            data-width={bodyWidthCm}
+            data-neck={neckCm}
+            data-sleeve={sleeveCm}
+          >
+            <ProductStage
+              kind="tee"
+              handle="seller-draft"
+              heightCm={175}
+              weightKg={70}
+              motion="diam"
+              garment={shell}
+              lengthCm={lengthCm}
+              bodyWidthCm={bodyWidthCm}
+              neckCm={neckCm}
+              sleeveCm={sleeveCm}
+              shellOn
+              frontUrl={front}
+              backUrl={back}
+            />
+          </div>
+          <p className="stage-caption">Updates as you edit. Saved in this browser only.</p>
+        </div>
       </div>
+      <section className="seller-catalog">
+        <h2>Catalog</h2>
+        {products.length === 0 ? (
+          <p className="details">No products yet. Saved pieces show up on the tee try-on.</p>
+        ) : (
+          <ul className="seller-list">
+            {products.map((product) => (
+              <li key={product.id}>
+                {product.frontImage ? <img src={product.frontImage} alt="" /> : <span className="swatch plain" />}
+                <div>
+                  <strong>{product.name}</strong>
+                  <p>
+                    {shellLabel(product.shell)} · hem {product.lengthCm} cm · width {product.bodyWidthCm} cm · neck {product.neckCm} cm · sleeve {product.sleeveCm} cm
+                  </p>
+                </div>
+                <button className="linkish" type="button" onClick={() => removeProduct(product.id)}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="details">
+          <Link to="/products/northline-heavyweight-tee">Open the try-on</Link>
+        </p>
+      </section>
     </div>
   )
 }

@@ -1,11 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { clampLength, isGarment, type Garment } from './lib/shell'
+import { clampLength, clampNeck, clampSleeve, clampWidth, isGarment, type Garment } from './lib/shell'
 
 export type SellerProduct = {
   id: string
   name: string
   shell: Garment
   lengthCm: number
+  bodyWidthCm: number
+  neckCm: number
+  sleeveCm: number
   frontImage: string | null
   backImage: string | null
 }
@@ -32,6 +35,9 @@ function load(): SellerProduct[] {
         name: item.name.slice(0, 60),
         shell: item.shell,
         lengthCm: clampLength(Number(item.lengthCm)),
+        bodyWidthCm: clampWidth(Number(item.bodyWidthCm)),
+        neckCm: clampNeck(Number(item.neckCm)),
+        sleeveCm: clampSleeve(Number(item.sleeveCm)),
         frontImage: typeof item.frontImage === 'string' ? item.frontImage : null,
         backImage: typeof item.backImage === 'string' ? item.backImage : null,
       }))
@@ -59,6 +65,9 @@ export function SellerProvider({ children }: { children: ReactNode }) {
           name: name.slice(0, 60),
           shell: input.shell,
           lengthCm: clampLength(input.lengthCm),
+          bodyWidthCm: clampWidth(input.bodyWidthCm),
+          neckCm: clampNeck(input.neckCm),
+          sleeveCm: clampSleeve(input.sleeveCm),
           frontImage: input.frontImage,
           backImage: input.backImage,
         }

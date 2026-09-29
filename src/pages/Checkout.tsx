@@ -176,7 +176,7 @@ export function Checkout() {
                   {line.label}
                   {line.shell ? ` · ${shellLabel(line.shell)}` : ''}
                   {line.fit ? ` · ${line.fit}` : ''}
-                  {line.lengthCm ? ` · ${line.lengthCm} cm` : ''}
+                  {line.lengthCm ? ` · hem ${line.lengthCm} cm` : ''}{line.bodyWidthCm ? ` · width ${line.bodyWidthCm}` : ''}{line.neckCm ? ` · neck ${line.neckCm}` : ''}{line.sleeveCm ? ` · sleeve ${line.sleeveCm}` : ''}
                   {' · '}Qty {line.qty}
                 </p>
               </div>

@@ -133,6 +133,9 @@ export function ProductPage() {
             data-gender={account.active?.gender ?? 'male'}
             data-garment={chosen?.shell ?? ''}
             data-length={chosen?.lengthCm ?? ''}
+            data-width={chosen?.bodyWidthCm ?? ''}
+            data-neck={chosen?.neckCm ?? ''}
+            data-sleeve={chosen?.sleeveCm ?? ''}
             data-seller={chosen?.id ?? ''}
           >
             <ProductStage
@@ -144,6 +147,9 @@ export function ProductPage() {
               motion={motion}
               garment={chosen?.shell ?? 'short'}
               lengthCm={chosen?.lengthCm ?? 80}
+              bodyWidthCm={chosen?.bodyWidthCm}
+              neckCm={chosen?.neckCm}
+              sleeveCm={chosen?.sleeveCm}
               shellOn={Boolean(chosen)}
               frontUrl={chosen?.frontImage ?? null}
               backUrl={chosen?.backImage ?? null}
@@ -186,7 +192,7 @@ export function ProductPage() {
                   >
                     {item.name}
                     <small>
-                      {shellLabel(item.shell)} · {item.lengthCm} cm
+                      {shellLabel(item.shell)} · {item.lengthCm} cm · width {item.bodyWidthCm}
                     </small>
                   </button>
                 ))
@@ -194,7 +200,7 @@ export function ProductPage() {
             </div>
             {chosen && (
               <p className="stage-caption">
-                {chosen.name}: {shellLabel(chosen.shell)}, hem {chosen.lengthCm} cm. Length is set by the seller.
+                {chosen.name}: {shellLabel(chosen.shell)}, hem {chosen.lengthCm} cm, width {chosen.bodyWidthCm} cm, neck {chosen.neckCm} cm, sleeve {chosen.sleeveCm} cm. Set by the seller.
               </p>
             )}
             <div className="anim-picker" role="group" aria-label="Animation">
@@ -391,6 +397,9 @@ export function ProductPage() {
                 sellerName: chosen.name,
                 shell: chosen.shell,
                 lengthCm: chosen.lengthCm,
+                bodyWidthCm: chosen.bodyWidthCm,
+                neckCm: chosen.neckCm,
+                sleeveCm: chosen.sleeveCm,
                 frontImage: chosen.frontImage,
                 backImage: chosen.backImage,
                 fit,

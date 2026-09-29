@@ -358,3 +358,9 @@ html { scroll-padding-top: 112px; }
 .seller-thumbs { display: flex; gap: 8px; margin: 8px 0 12px; }
 .seller-list p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .swatch.plain { display: inline-block; width: 56px; height: 56px; border-radius: 4px; background: #2c3338; }
+
+.seller-editor { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 28px; align-items: start; margin-bottom: 36px; }
+.seller-catalog { margin-top: 8px; }
+@media (max-width: 900px) {
+  .seller-editor { grid-template-columns: 1fr; }
+}

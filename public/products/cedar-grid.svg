@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000">
+  <rect width="800" height="1000" fill="#f3efe6"/>
+  <g stroke="#1c1c1c" stroke-width="1.5" fill="none">
+    <rect x="90" y="90" width="620" height="820"/>
+  </g>
+  <g stroke="#1c1c1c" stroke-width="1" opacity="0.85">
+<line x1="90" y1="90" x2="90" y2="910"/>
+<line x1="152" y1="90" x2="152" y2="910"/>
+<line x1="214" y1="90" x2="214" y2="910"/>
+<line x1="276" y1="90" x2="276" y2="910"/>
+<line x1="338" y1="90" x2="338" y2="910"/>
+<line x1="400" y1="90" x2="400" y2="910"/>
+<line x1="462" y1="90" x2="462" y2="910"/>
+<line x1="524" y1="90" x2="524" y2="910"/>
+<line x1="586" y1="90" x2="586" y2="910"/>
+<line x1="648" y1="90" x2="648" y2="910"/>
+<line x1="710" y1="90" x2="710" y2="910"/>
+<line x1="90" y1="90" x2="710" y2="90"/>
+<line x1="90" y1="164" x2="710" y2="164"/>
+<line x1="90" y1="238" x2="710" y2="238"/>
+<line x1="90" y1="312" x2="710" y2="312"/>
+<line x1="90" y1="386" x2="710" y2="386"/>
+<line x1="90" y1="460" x2="710" y2="460"/>
+<line x1="90" y1="534" x2="710" y2="534"/>
+<line x1="90" y1="608" x2="710" y2="608"/>
+<line x1="90" y1="682" x2="710" y2="682"/>
+<line x1="90" y1="756" x2="710" y2="756"/>
+<line x1="90" y1="830" x2="710" y2="830"/>
+<line x1="90" y1="904" x2="710" y2="904"/>
+  </g>
+  <rect x="276" y="312" width="124" height="148" fill="#8d4a32"/>
+  <text x="96" y="70" fill="#1c1c1c" font-family="Georgia, serif" font-size="18" letter-spacing="5">CEDAR GRID</text>
+</svg>

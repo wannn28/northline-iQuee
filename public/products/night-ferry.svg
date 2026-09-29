@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000">
+  <rect width="800" height="1000" fill="#0e141b"/>
+  <circle cx="400" cy="430" r="168" fill="#e6dfd2"/>
+  <rect x="120" y="690" width="560" height="3" fill="#e6dfd2"/>
+  <rect x="120" y="708" width="180" height="3" fill="#d7b56a"/>
+  <text x="120" y="780" fill="#e6dfd2" font-family="Georgia, serif" font-size="30" letter-spacing="8">NIGHT FERRY</text>
+  <text x="120" y="818" fill="#8d97a3" font-family="Georgia, serif" font-size="16" letter-spacing="4">NORTHLINE</text>
+</svg>

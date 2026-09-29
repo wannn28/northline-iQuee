@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000">
+  <rect width="800" height="1000" fill="#f4f1eb"/>
+  <ellipse cx="400" cy="860" rx="210" ry="18" fill="#e2ddd4"/>
+  <path fill="#1d3550" d="M250 168
+    C292 214 508 214 550 168
+    L648 214
+    L724 360
+    L640 408
+    L596 292
+    L596 760
+    L204 760
+    L204 292
+    L160 408
+    L76 360
+    L152 214
+    Z"/>
+  <path fill="#122438" d="M292 176
+    C318 230 482 230 508 176
+    C470 206 330 206 292 176 Z"/>
+  <path fill="#1d3550" opacity="0.35" d="M204 292 L250 250 L250 760 L204 760 Z"/>
+  <text x="400" y="430" text-anchor="middle" fill="#f4f1e6" font-family="Helvetica, Arial, sans-serif" font-size="22" letter-spacing="6">DOCK 14</text>
+  <text x="400" y="462" text-anchor="middle" fill="#f4f1e6" font-family="Helvetica, Arial, sans-serif" font-size="13" letter-spacing="4">NORTHLINE</text>
+</svg>

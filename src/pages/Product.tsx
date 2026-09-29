@@ -40,6 +40,11 @@ export function ProductPage() {
   if (!product) return <div className="wrap loading">Loading product…</div>
 
   const variant = product.variants.find((item) => item.id === variantId) ?? product.variants[0]
+  const selectedColor = TEE_COLORS.find((swatch) => swatch.hex === color)
+  const description =
+    product.kind === 'tee' && selectedColor
+      ? product.description.replace(/^(Charcoal|Olive|Navy|Sand)(?=\b)/, selectedColor.label)
+      : product.description
 
   return (
     <div className="wrap product">
@@ -57,7 +62,7 @@ export function ProductPage() {
         <p className="kicker">{product.kind === 'poster' ? 'Poster' : 'Heavyweight tee'}</p>
         <h1>{product.title}</h1>
         <p className="price">{variant ? money(variant.price_cents) : ''}</p>
-        <p className="copy">{product.description}</p>
+        <p className="copy">{description}</p>
         <p className="details">{product.details}</p>
         {product.kind === 'tee' && (
           <>

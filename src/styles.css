@@ -284,3 +284,61 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
   color: var(--muted);
   font-size: 14px;
 }
+
+.tools { display: flex; justify-content: flex-end; gap: 16px; }
+.stage-row { display: grid; grid-template-columns: minmax(0, 1fr) 188px; background: var(--paper); }
+.stage-row .stage { background: transparent; }
+.fit-badge {
+  border-left: 1px solid var(--line);
+  background: #fff;
+  padding: 14px 12px 12px;
+}
+.fit-badge .kicker { margin-bottom: 4px; }
+.fit-badge strong {
+  display: block;
+  font-size: 28px;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0 0 4px;
+  text-transform: lowercase;
+}
+.fit-gloss { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.fit-badge p { margin: 0 0 6px; font-size: 13px; }
+.fit-badge .note { color: var(--muted); font-size: 12px; }
+.chart { list-style: none; margin: 8px 0; padding: 0; font-size: 12px; }
+.chart li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; color: var(--muted); }
+.chart li.on { color: var(--ink); font-weight: 600; }
+.shirt-waiting {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(255,255,255,0.92);
+  border: 1px dashed #4e4943;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+.char-panel { margin-top: 16px; }
+.char-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+.char-list .size { display: flex; flex-direction: column; align-items: flex-start; }
+.char-list small { color: var(--muted); font-size: 12px; }
+.demo-account {
+  background: #f7f4ea;
+  border: 1px solid #e3d7b6;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  margin: 0 0 16px;
+}
+.account { padding-bottom: 72px; }
+.account h2 { margin: 0 0 8px; font-size: 22px; font-weight: 500; }
+.account h3 { margin: 8px 0 12px; font-size: 16px; font-weight: 560; }
+.account-grid { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 36px; }
+@media (max-width: 900px) {
+  .stage-row, .account-grid { grid-template-columns: 1fr; }
+  .fit-badge { border-left: 0; border-top: 1px solid var(--line); }
+}

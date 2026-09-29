@@ -1,19 +1,61 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fetchProduct } from '../api'
+import { useAccount } from '../account'
 import { useCart } from '../cart'
 import { ProductStage } from '../components/ProductStage'
+import { DEMO_SIZE_CHART, estimatedChestCm, fitFor, fitGloss } from '../lib/fit'
 import { TEE_COLORS, defaultTeeColor } from '../teeColors'
 import { money, type Product } from '../types'
+
+function RangeField({
+  label,
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onCommit: (value: number) => void
+}) {
+  const [text, setText] = useState(String(value))
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        inputMode="numeric"
+        type="number"
+        min={min}
+        max={max}
+        step={1}
+        value={text}
+        onChange={(event) => {
+          const next = event.target.value
+          setText(next)
+          const parsed = Number(next)
+          if (Number.isFinite(parsed) && parsed >= min && parsed <= max) onCommit(parsed)
+        }}
+      />
+    </label>
+  )
+}
 
 export function ProductPage() {
   const { handle = '' } = useParams()
   const { add } = useCart()
+  const account = useAccount()
   const [product, setProduct] = useState<Product | null>(null)
   const [error, setError] = useState('')
   const [variantId, setVariantId] = useState<number | null>(null)
   const [added, setAdded] = useState(false)
   const [color, setColor] = useState(() => defaultTeeColor(handle))
+  const [addError, setAddError] = useState('')
 
   useEffect(() => {
     setProduct(null)
@@ -45,18 +87,127 @@ export function ProductPage() {
     product.kind === 'tee' && selectedColor
       ? product.description.replace(/^(Charcoal|Olive|Navy|Sand)(?=\b)/, selectedColor.label)
       : product.description
+  const heightCm = account.active?.heightCm ?? 175
+  const weightKg = account.active?.weightKg ?? 70
+  const chest = estimatedChestCm(weightKg)
+  const fit = product.kind === 'tee' && variant ? fitFor(variant.label, chest) : null
+
+  function onAddCharacter(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const nextError = account.addCharacter({
+      name: String(form.get('name') || ''),
+      heightCm: Number(form.get('height')),
+      weightKg: Number(form.get('weight')),
+    })
+    setAddError(nextError ?? '')
+    if (!nextError) event.currentTarget.reset()
+  }
 
   return (
     <div className="wrap product">
       <div className="gallery">
-        <div className="media stage">
-          <ProductStage kind={product.kind} handle={product.handle} color={color} />
+        <div className={product.kind === 'tee' ? 'stage-row' : undefined}>
+          <div
+            className="media stage"
+            data-preview={product.kind === 'tee' ? 'body' : 'frame'}
+            data-height={heightCm}
+            data-weight={weightKg}
+            data-chest={chest}
+            data-fit={fit ?? ''}
+          >
+            <ProductStage kind={product.kind} handle={product.handle} heightCm={heightCm} weightKg={weightKg} />
+          </div>
+          {product.kind === 'tee' && fit && (
+            <aside className="fit-badge" aria-live="polite">
+              <p className="kicker">Fit</p>
+              <strong data-fit-word={fit}>{fit}</strong>
+              <p className="fit-gloss">{fitGloss(fit)}</p>
+              <p>Est. chest {chest} cm</p>
+              <p>Size {variant?.label}</p>
+              <p className="note">Demo size chart, not a real factory chart.</p>
+              <ul className="chart">
+                {DEMO_SIZE_CHART.map((row) => (
+                  <li key={row.label} className={row.label === variant?.label ? 'on' : undefined}>
+                    <span>{row.label}</span>
+                    <span>
+                      {row.min}–{row.max} cm
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="note">Estimate, not a body scan.</p>
+            </aside>
+          )}
         </div>
         <p className="stage-caption">
           {product.kind === 'tee'
-            ? 'Drag to rotate. Color swatches recolor this preview only.'
+            ? 'Drag to orbit. Height stretches the body vertically. Weight changes chest and waist width. The body is an estimate, not a body scan.'
             : 'Drag to rotate. The frame is a preview — the print ships unframed.'}
         </p>
+        {product.kind === 'tee' && (
+          <div className="char-panel">
+            <p className="demo-account">This is a demo, not a real account. Characters stay in this browser only.</p>
+            {account.email && account.active ? (
+              <>
+                <span className="field-label">Character</span>
+                <div className="char-list">
+                  {account.characters.map((character) => (
+                    <button
+                      key={character.id}
+                      type="button"
+                      className={character.id === account.active?.id ? 'size on' : 'size'}
+                      onClick={() => account.selectCharacter(character.id)}
+                    >
+                      {character.name}
+                    </button>
+                  ))}
+                </div>
+                <div className="row-2">
+                  <RangeField
+                    label="Height (cm)"
+                    value={account.active.heightCm}
+                    min={140}
+                    max={210}
+                    onCommit={(next) => account.updateCharacter(account.active!.id, { heightCm: next })}
+                  />
+                  <RangeField
+                    label="Weight (kg)"
+                    value={account.active.weightKg}
+                    min={40}
+                    max={160}
+                    onCommit={(next) => account.updateCharacter(account.active!.id, { weightKg: next })}
+                  />
+                </div>
+                <form onSubmit={onAddCharacter}>
+                  <span className="field-label">Add another character</span>
+                  <label className="field">
+                    <span>Name</span>
+                    <input name="name" required maxLength={40} />
+                  </label>
+                  <div className="row-2">
+                    <label className="field">
+                      <span>Height (cm)</span>
+                      <input name="height" type="number" min={140} max={210} defaultValue={182} required />
+                    </label>
+                    <label className="field">
+                      <span>Weight (kg)</span>
+                      <input name="weight" type="number" min={40} max={160} defaultValue={78} required />
+                    </label>
+                  </div>
+                  {addError && <p className="error">{addError}</p>}
+                  <button className="btn secondary" type="submit">
+                    Add character
+                  </button>
+                </form>
+              </>
+            ) : (
+              <p className="details">
+                <Link to="/account">Register or log in</Link> to keep a character on this demo. A 175 cm, 70 kg estimate is shown until then.
+              </p>
+            )}
+          </div>
+        )}
       </div>
       <div>
         <p className="kicker">{product.kind === 'poster' ? 'Poster' : 'Heavyweight tee'}</p>

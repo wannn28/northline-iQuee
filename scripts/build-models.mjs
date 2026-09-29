@@ -1,4 +1,5 @@
-// Original low-poly product meshes. Sketchfab downloads require a login we do not have.
+// Poster frame only. The tee preview is a generated body mesh in the viewer.
+// Do not generate a shirt mesh here. The Sketchfab tee file is supplied separately.
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -24,50 +25,6 @@ function box(w, h, d, x, y, z, rotX = 0) {
   if (rotX) geom.rotateX(rotX)
   geom.translate(x, y, z)
   return geom
-}
-
-function teeMesh() {
-  const shape = new THREE.Shape()
-  const body = 0.46
-  const hem = -0.64
-  const pit = 0.26
-  const sleeveOut = 0.96
-  const sleeveLow = 0.34
-  const sleeveHigh = 0.56
-  const shoulder = 0.5
-  const neck = 0.14
-  shape.moveTo(-body, hem)
-  shape.lineTo(body, hem)
-  shape.lineTo(body, pit)
-  shape.lineTo(sleeveOut, sleeveLow)
-  shape.lineTo(sleeveOut, sleeveHigh)
-  shape.lineTo(neck, shoulder)
-  shape.bezierCurveTo(neck * 0.35, shoulder - 0.16, -neck * 0.35, shoulder - 0.16, -neck, shoulder)
-  shape.lineTo(-sleeveOut, sleeveHigh)
-  shape.lineTo(-sleeveOut, sleeveLow)
-  shape.lineTo(-body, pit)
-  shape.closePath()
-
-  const geom = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.2,
-    bevelEnabled: true,
-    bevelThickness: 0.025,
-    bevelSize: 0.02,
-    bevelSegments: 1,
-    curveSegments: 8,
-  })
-  geom.center()
-  geom.computeVertexNormals()
-  const tris = geom.index ? geom.index.count / 3 : geom.getAttribute('position').count / 3
-  const material = new THREE.MeshStandardMaterial({
-    name: 'Fabric',
-    color: '#2c3338',
-    roughness: 0.88,
-    metalness: 0.0,
-  })
-  const mesh = new THREE.Mesh(geom, material)
-  mesh.name = 'Tee'
-  return { mesh, tris }
 }
 
 // Inner opening is 0.80 x 1.00. Poster plane in the viewer is 0.785 x 0.981 at z = 0.02.
@@ -100,13 +57,11 @@ async function main() {
   root.name = 'PosterFrame'
   root.add(frame)
 
-  const { mesh: tee, tris } = teeMesh()
   const outDir = process.argv[2] || 'public/models'
   mkdirSync(outDir, { recursive: true })
-  await writeGlb(tee, `${outDir}/tee.glb`)
   await writeGlb(root, `${outDir}/frame.glb`)
   const frameTris = frameGeom.index ? frameGeom.index.count / 3 : frameGeom.getAttribute('position').count / 3
-  console.log(JSON.stringify({ teeTris: tris, frameTris, outDir }))
+  console.log(JSON.stringify({ frameTris, outDir }))
 }
 
 function writeGlb(object, path) {

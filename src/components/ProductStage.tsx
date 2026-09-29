@@ -1,18 +1,18 @@
-import { Component, Suspense, use, useEffect, useMemo, type ReactNode } from 'react'
+import { Component, Suspense, use, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
+import { applyBodyScale, createBodyGeometry, shirtMountTransform } from '../lib/bodyMesh'
 
-const TEE_URL = '/models/tee.glb'
 const FRAME_URL = '/models/frame.glb'
 
-useGLTF.preload(TEE_URL)
 useGLTF.preload(FRAME_URL)
 
 type StageProps = {
   kind: 'poster' | 'tee'
   handle: string
-  color: string
+  heightCm?: number
+  weightKg?: number
 }
 
 class StageBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
@@ -38,21 +38,98 @@ function cloneWithMaterials(scene: THREE.Object3D) {
   return clone
 }
 
-function TeeModel({ color }: { color: string }) {
-  const { scene } = useGLTF(TEE_URL)
-  const root = useMemo(() => cloneWithMaterials(scene), [scene])
+function BodyMesh({ heightCm, weightKg }: { heightCm: number; weightKg: number }) {
+  const geometry = useMemo(() => createBodyGeometry(), [])
+
+  useLayoutEffect(() => {
+    applyBodyScale(geometry, heightCm, weightKg)
+  }, [geometry, heightCm, weightKg])
+
+  useEffect(() => () => geometry.dispose(), [geometry])
+
+  return (
+    <mesh geometry={geometry} name="EstimatedBody">
+      <meshStandardMaterial color="#d9c6b6" roughness={0.74} metalness={0} />
+    </mesh>
+  )
+}
+
+function waitingLabel() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 640
+  canvas.height = 160
+  const context = canvas.getContext('2d')
+  if (!context) return null
+  context.fillStyle = 'rgba(255,255,255,0.94)'
+  context.fillRect(0, 0, 640, 160)
+  context.strokeStyle = '#4e4943'
+  context.lineWidth = 6
+  context.setLineDash([14, 10])
+  context.strokeRect(8, 8, 624, 144)
+  context.setLineDash([])
+  context.fillStyle = '#171717'
+  context.font = '600 46px Inter, Helvetica, Arial, sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText('Shirt file is waiting', 320, 80)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.needsUpdate = true
+  return texture
+}
+
+function ShirtMount({ heightCm, weightKg }: { heightCm: number; weightKg: number }) {
+  const mount = useMemo(() => {
+    const place = shirtMountTransform(heightCm, weightKg)
+    const w = place.width / 2
+    const h = place.height / 2
+    const frame = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-w, -h, 0),
+        new THREE.Vector3(w, -h, 0),
+        new THREE.Vector3(w, h, 0),
+        new THREE.Vector3(-w, h, 0),
+        new THREE.Vector3(-w, -h, 0),
+      ]),
+      new THREE.LineBasicMaterial({ color: '#4e4943' }),
+    )
+    frame.name = 'ShirtMountFrame'
+    frame.position.set(place.position[0], place.position[1], place.position[2])
+
+    const map = waitingLabel()
+    const group = new THREE.Group()
+    group.name = 'ShirtMount'
+    group.add(frame)
+    if (map) {
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false }),
+      )
+      sprite.name = 'ShirtMountLabel'
+      sprite.renderOrder = 10
+      sprite.position.set(place.position[0], place.position[1], place.position[2])
+      sprite.scale.set(0.78, 0.2, 1)
+      group.add(sprite)
+    }
+    return group
+  }, [heightCm, weightKg])
 
   useEffect(() => {
-    root.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh)) return
-      const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
-      for (const material of materials) {
-        if (material instanceof THREE.MeshStandardMaterial) material.color.set(color)
-      }
-    })
-  }, [root, color])
+    return () => {
+      mount.traverse((obj) => {
+        if (obj instanceof THREE.Line) {
+          obj.geometry.dispose()
+          const material = obj.material
+          if (!Array.isArray(material)) material.dispose()
+        }
+        if (obj instanceof THREE.Sprite) {
+          if (obj.material.map) obj.material.map.dispose()
+          obj.material.dispose()
+        }
+      })
+    }
+  }, [mount])
 
-  return <primitive object={root} />
+  return <primitive object={mount} />
 }
 
 async function rasterizeArt(url: string) {
@@ -113,17 +190,18 @@ function FrameModel({ artUrl }: { artUrl: string }) {
   )
 }
 
-function View({ kind, handle, color }: StageProps) {
+function View({ kind, handle, heightCm, weightKg }: Required<StageProps>) {
   return (
     <>
-      <hemisphereLight args={['#f7f4ee', '#3a3a3a', 0.72]} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[3.4, 2.8, 2.2]} intensity={2.4} />
-      <directionalLight position={[-2.8, 1.2, -2.4]} intensity={0.7} />
+      <hemisphereLight args={['#f7f4ee', '#3a3a3a', 0.85]} />
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[2.8, 4.2, 3.2]} intensity={2.5} />
+      <directionalLight position={[-2.4, 1.6, -1.8]} intensity={0.55} />
       <Suspense fallback={null}>
         {kind === 'tee' ? (
-          <group rotation={[0.12, -0.7, 0]}>
-            <TeeModel color={color} />
+          <group>
+            <BodyMesh heightCm={heightCm} weightKg={weightKg} />
+            <ShirtMount heightCm={heightCm} weightKg={weightKg} />
           </group>
         ) : (
           <FrameModel artUrl={`/products/${handle}.svg`} />
@@ -134,20 +212,21 @@ function View({ kind, handle, color }: StageProps) {
         enablePan={false}
         enableRotate
         enableDamping
-        rotateSpeed={0.9}
+        rotateSpeed={0.85}
+        target={kind === 'tee' ? [0, 0.92, 0] : [0, 0, 0]}
         minDistance={kind === 'tee' ? 2.2 : 1.6}
-        maxDistance={kind === 'tee' ? 6.5 : 4.2}
-        minPolarAngle={0.35}
-        maxPolarAngle={Math.PI - 0.35}
+        maxDistance={kind === 'tee' ? 7.5 : 4.2}
+        minPolarAngle={0.25}
+        maxPolarAngle={Math.PI - 0.25}
       />
     </>
   )
 }
 
-export function ProductStage({ kind, handle, color }: StageProps) {
+export function ProductStage({ kind, handle, heightCm = 175, weightKg = 70 }: StageProps) {
   const camera =
     kind === 'tee'
-      ? { position: [1.55, 0.72, 2.7] as [number, number, number], fov: 32 }
+      ? { position: [1.05, 1.15, 3.35] as [number, number, number], fov: 32 }
       : { position: [0.55, 0.15, 2.25] as [number, number, number], fov: 35 }
 
   const fallback = <div className="stage-fallback">3D preview unavailable</div>
@@ -157,7 +236,7 @@ export function ProductStage({ kind, handle, color }: StageProps) {
       <Canvas
         key={`${kind}:${handle}`}
         className="viewer"
-        aria-label={kind === 'tee' ? 'Rotatable tee preview' : 'Rotatable framed poster preview'}
+        aria-label={kind === 'tee' ? 'Rotatable body preview' : 'Rotatable framed poster preview'}
         camera={camera}
         dpr={[1, 1.75]}
         gl={{
@@ -168,7 +247,7 @@ export function ProductStage({ kind, handle, color }: StageProps) {
           preserveDrawingBuffer: true,
         }}
       >
-        <View kind={kind} handle={handle} color={color} />
+        <View kind={kind} handle={handle} heightCm={heightCm} weightKg={weightKg} />
       </Canvas>
     </StageBoundary>
   )

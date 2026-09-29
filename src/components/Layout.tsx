@@ -1,8 +1,10 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { useAccount } from '../account'
 import { useCart } from '../cart'
 
 export function Layout() {
   const { count } = useCart()
+  const { email } = useAccount()
   return (
     <div className="shell">
       <div className="announce">Demo store · Made to order · Ships from the US · No live charges</div>
@@ -18,6 +20,7 @@ export function Layout() {
             <NavLink to="/collections/tees">Tees</NavLink>
           </nav>
           <div className="tools">
+            <NavLink to="/account">{email ? 'Account' : 'Log in'}</NavLink>
             <NavLink to="/cart">Cart ({count})</NavLink>
           </div>
         </div>

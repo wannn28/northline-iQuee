@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { AccountPage } from './pages/Account'
 import { Admin } from './pages/Admin'
 import { CartPage } from './pages/Cart'
 import { Checkout } from './pages/Checkout'
@@ -30,6 +31,7 @@ export function App() {
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/orders/:publicId" element={<OrderPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Route>

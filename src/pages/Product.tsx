@@ -1,11 +1,10 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fetchProduct } from '../api'
 import { useCart } from '../cart'
+import { ProductStage } from '../components/ProductStage'
 import { TEE_COLORS, defaultTeeColor } from '../teeColors'
 import { money, type Product } from '../types'
-
-const ProductStage = lazy(() => import('../components/ProductStage').then((mod) => ({ default: mod.ProductStage })))
 
 export function ProductPage() {
   const { handle = '' } = useParams()
@@ -46,9 +45,7 @@ export function ProductPage() {
     <div className="wrap product">
       <div className="gallery">
         <div className="media stage">
-          <Suspense fallback={<img src={`/products/${product.handle}.svg`} alt={product.title} />}>
-            <ProductStage kind={product.kind} handle={product.handle} color={color} />
-          </Suspense>
+          <ProductStage kind={product.kind} handle={product.handle} color={color} />
         </div>
         <p className="stage-caption">
           {product.kind === 'tee'

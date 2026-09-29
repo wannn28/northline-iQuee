@@ -116,19 +116,29 @@ function FrameModel({ artUrl }: { artUrl: string }) {
 function View({ kind, handle, color }: StageProps) {
   return (
     <>
-      <ambientLight intensity={0.86} />
-      <directionalLight position={[2.4, 3.6, 4.4]} intensity={1.65} />
-      <directionalLight position={[-2.6, 1.4, -1.8]} intensity={0.38} />
+      <hemisphereLight args={['#f7f4ee', '#3a3a3a', 0.72]} />
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[3.4, 2.8, 2.2]} intensity={2.4} />
+      <directionalLight position={[-2.8, 1.2, -2.4]} intensity={0.7} />
       <Suspense fallback={null}>
-        {kind === 'tee' ? <TeeModel color={color} /> : <FrameModel artUrl={`/products/${handle}.svg`} />}
+        {kind === 'tee' ? (
+          <group rotation={[0.12, -0.7, 0]}>
+            <TeeModel color={color} />
+          </group>
+        ) : (
+          <FrameModel artUrl={`/products/${handle}.svg`} />
+        )}
       </Suspense>
       <OrbitControls
+        makeDefault
         enablePan={false}
+        enableRotate
         enableDamping
-        minDistance={kind === 'tee' ? 2.4 : 1.6}
-        maxDistance={kind === 'tee' ? 6 : 4.2}
-        minPolarAngle={0.45}
-        maxPolarAngle={Math.PI - 0.45}
+        rotateSpeed={0.9}
+        minDistance={kind === 'tee' ? 2.2 : 1.6}
+        maxDistance={kind === 'tee' ? 6.5 : 4.2}
+        minPolarAngle={0.35}
+        maxPolarAngle={Math.PI - 0.35}
       />
     </>
   )
@@ -137,10 +147,10 @@ function View({ kind, handle, color }: StageProps) {
 export function ProductStage({ kind, handle, color }: StageProps) {
   const camera =
     kind === 'tee'
-      ? { position: [0, 0.04, 3.9] as [number, number, number], fov: 35 }
-      : { position: [0.2, 0.02, 2.35] as [number, number, number], fov: 35 }
+      ? { position: [1.55, 0.72, 2.7] as [number, number, number], fov: 32 }
+      : { position: [0.55, 0.15, 2.25] as [number, number, number], fov: 35 }
 
-  const fallback = <img src={`/products/${handle}.svg`} alt="" />
+  const fallback = <div className="stage-fallback">3D preview unavailable</div>
 
   return (
     <StageBoundary fallback={fallback}>
@@ -150,7 +160,13 @@ export function ProductStage({ kind, handle, color }: StageProps) {
         aria-label={kind === 'tee' ? 'Rotatable tee preview' : 'Rotatable framed poster preview'}
         camera={camera}
         dpr={[1, 1.75]}
-        gl={{ alpha: true, antialias: true }}
+        gl={{
+          alpha: true,
+          antialias: true,
+          powerPreference: 'default',
+          failIfMajorPerformanceCaveat: false,
+          preserveDrawingBuffer: true,
+        }}
       >
         <View kind={kind} handle={handle} color={color} />
       </Canvas>

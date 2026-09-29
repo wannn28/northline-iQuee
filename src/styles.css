@@ -275,3 +275,12 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
   padding: 0;
 }
 .swatch.on { box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--ink); }
+
+.stage-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
+}

@@ -511,11 +511,22 @@ app.get('/api/admin/orders', requireAdmin, (_req, res) => {
   res.json({ orders: rows.map((row) => publicOrder(row.id)) })
 })
 
+function sendStorefront(res: express.Response) {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+  res.sendFile(path.join(DIST, 'index.html'))
+}
+
 if (fs.existsSync(DIST)) {
-  app.use(express.static(DIST))
+  app.use(express.static(DIST, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(`${path.sep}index.html`)) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+      }
+    },
+  }))
   app.use((req, res, next) => {
     if (req.method !== 'GET' || req.path.startsWith('/api')) return next()
-    res.sendFile(path.join(DIST, 'index.html'))
+    sendStorefront(res)
   })
 }
 

@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { chestWidthScale, heightScale } from '../lib/fit'
 
 const FRAME_URL = '/models/frame.glb'
+// CC0 male base mesh (male_base_mesh.glb from BoQsc/Godot-3D-Male-Base-Mesh 1.0.2). Not a primitive mannequin.
 const BODY_URL = '/models/body.glb'
 const SHIRT_URL = '/models/shirt.glb'
 
@@ -105,6 +106,38 @@ function paintShirt(root: THREE.Object3D, color: string) {
   })
 }
 
+
+function dropSleeves(root: THREE.Object3D) {
+  const axis = new THREE.Vector3(0, 0, 1)
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return
+    const geometry = obj.geometry.clone()
+    geometry.boundingBox = null
+    geometry.boundingSphere = null
+    const position = geometry.attributes.position
+    const vertex = new THREE.Vector3()
+    for (let i = 0; i < position.count; i += 1) {
+      vertex.fromBufferAttribute(position, i)
+      const side = vertex.x >= 0 ? 1 : -1
+      if (Math.abs(vertex.x) < 0.155) continue
+      const pivotX = side * 0.145
+      const pivotY = 0.785
+      vertex.x -= pivotX
+      vertex.y -= pivotY
+      const depth = vertex.z
+      vertex.z = 0
+      vertex.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(axis, -side * 1.05))
+      vertex.z = depth
+      vertex.x += pivotX
+      vertex.y += pivotY
+      position.setXYZ(i, vertex.x, vertex.y, vertex.z)
+    }
+    position.needsUpdate = true
+    geometry.computeVertexNormals()
+    obj.geometry = geometry
+  })
+}
+
 type RigHandle = {
   stand: THREE.Group
   mixer: THREE.AnimationMixer
@@ -126,9 +159,12 @@ function assembleRig(bodyScene: THREE.Object3D, shirtScene: THREE.Object3D): Rig
   mesh.castShadow = false
 
   const shirt = cloneWithMaterials(shirtScene)
+  dropSleeves(shirt)
   shirt.traverse((obj) => {
     if (obj instanceof THREE.Mesh) {
       obj.frustumCulled = false
+      obj.geometry.boundingBox = null
+      obj.geometry.boundingSphere = null
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
       for (const material of materials) {
         if (material instanceof THREE.MeshStandardMaterial) {
@@ -142,10 +178,26 @@ function assembleRig(bodyScene: THREE.Object3D, shirtScene: THREE.Object3D): Rig
   })
   const chest = mesh.skeleton.getBoneByName('spine003')
   if (!chest) throw new Error('missing chest bone')
-  const shirtScale = new THREE.Vector3(1.08, 1.52, 1.85)
-  shirt.scale.copy(shirtScale)
-  shirt.position.set(0, -0.683 * shirtScale.y + 0.02, -0.007 * shirtScale.z + 0.045)
+  chest.updateWorldMatrix(true, true)
+  const boneQ = new THREE.Quaternion()
+  chest.getWorldQuaternion(boneQ)
+  // Right-handed: sleeves across the body, collar up, shirt front toward the chest.
+  const upright = new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0)),
+  )
+  shirt.scale.set(1.28, 1.95, 1.9)
+  shirt.quaternion.copy(boneQ).invert().multiply(upright)
+  shirt.position.set(0, 0, 0)
   chest.add(shirt)
+  shirt.updateWorldMatrix(true, true)
+  const worn = new THREE.Box3().setFromObject(shirt)
+  const shift = new THREE.Vector3(
+    0.04 - (worn.min.x + worn.max.x) / 2,
+    0.66 - worn.max.y,
+    -(worn.min.z + worn.max.z) / 2,
+  )
+  const restPosition = shift.applyQuaternion(boneQ.clone().invert())
+  shirt.position.copy(restPosition)
 
   const baseScale = new Map<THREE.Bone, THREE.Vector3>()
   for (const bone of mesh.skeleton.bones) baseScale.set(bone, bone.scale.clone())
@@ -172,6 +224,14 @@ function assembleRig(bodyScene: THREE.Object3D, shirtScene: THREE.Object3D): Rig
     }
     girth('spine001', factor)
     girth('spine003', factor)
+    const wornOn = mesh.skeleton.getBoneByName('spine003')
+    if (wornOn) {
+      shirt.position.set(
+        restPosition.x / wornOn.scale.x,
+        restPosition.y / wornOn.scale.y,
+        restPosition.z / wornOn.scale.z,
+      )
+    }
   }
 
   const mixer = new THREE.AnimationMixer(rig)

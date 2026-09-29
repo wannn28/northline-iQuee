@@ -128,27 +128,6 @@ export function ProductPage() {
             />
           </div>
         </div>
-        {product.kind === 'tee' && fit && (
-          <aside className="fit-badge" aria-live="polite">
-            <p className="kicker">Fit</p>
-            <strong data-fit-word={fit}>{fit}</strong>
-            <p className="fit-gloss">{fitGloss(fit)}</p>
-            <p>Est. chest {chest} cm</p>
-            <p>Size {variant?.label}</p>
-            <p className="note">Demo size chart, not a real factory chart.</p>
-            <ul className="chart">
-              {DEMO_SIZE_CHART.map((row) => (
-                <li key={row.label} className={row.label === variant?.label ? 'on' : undefined}>
-                  <span>{row.label}</span>
-                  <span>
-                    {row.min}–{row.max} cm
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="note">Estimate, not a body scan.</p>
-          </aside>
-        )}
         <p className="stage-caption">
           {product.kind === 'tee'
             ? 'Drag to orbit. Height stretches the body vertically. Weight changes chest and waist width. This is a demo, not a body scan.'
@@ -249,9 +228,32 @@ export function ProductPage() {
       <div>
         <p className="kicker">{product.kind === 'poster' ? 'Poster' : 'Heavyweight tee'}</p>
         <h1>{product.title}</h1>
+
+        {product.kind === 'tee' && fit && (
+          <aside className="fit-badge" aria-live="polite">
+            <p className="kicker">Fit</p>
+            <strong data-fit-word={fit}>{fit}</strong>
+            <p className="fit-gloss">{fitGloss(fit)}</p>
+            <p>Est. chest {chest} cm</p>
+            <p>Size {variant?.label}</p>
+            <p className="note">Demo size chart, not a real factory chart.</p>
+            <ul className="chart">
+              {DEMO_SIZE_CHART.map((row) => (
+                <li key={row.label} className={row.label === variant?.label ? 'on' : undefined}>
+                  <span>{row.label}</span>
+                  <span>
+                    {row.min}–{row.max} cm
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="note">Estimate, not a body scan.</p>
+          </aside>
+        )}
         <p className="price">{variant ? money(variant.price_cents) : ''}</p>
         <p className="copy">{description}</p>
         <p className="details">{product.details}</p>
+
         {product.kind === 'tee' && (
           <>
             <span className="field-label">Color</span>

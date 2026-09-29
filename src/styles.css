@@ -291,10 +291,14 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
 .stage-row { display: block; background: var(--paper); }
 .stage-row .stage { background: transparent; }
 .fit-badge {
-  margin-top: 12px;
+  margin: 0 0 18px;
   border: 1px solid var(--line);
   background: #fff;
-  padding: 14px 12px 12px;
+  padding: 14px 14px 12px;
+  position: relative;
+  z-index: 1;
+  scroll-margin-top: 128px;
+  overflow: visible;
 }
 .fit-badge .kicker { margin-bottom: 4px; }
 .fit-badge strong {
@@ -302,9 +306,11 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
   font-size: 28px;
   font-weight: 560;
   letter-spacing: -0.03em;
-  line-height: 1;
-  margin: 0 0 4px;
+  line-height: 1.25;
+  margin: 0 0 6px;
+  padding-bottom: 2px;
   text-transform: lowercase;
+  overflow: visible;
 }
 .fit-gloss { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
 .fit-badge p { margin: 0 0 6px; font-size: 13px; }

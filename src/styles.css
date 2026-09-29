@@ -286,10 +286,11 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
 }
 
 .tools { display: flex; justify-content: flex-end; gap: 16px; }
-.stage-row { display: grid; grid-template-columns: minmax(0, 1fr) 188px; background: var(--paper); }
+.stage-row { display: block; background: var(--paper); }
 .stage-row .stage { background: transparent; }
 .fit-badge {
-  border-left: 1px solid var(--line);
+  margin-top: 12px;
+  border: 1px solid var(--line);
   background: #fff;
   padding: 14px 12px 12px;
 }
@@ -339,6 +340,5 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
 .account h3 { margin: 8px 0 12px; font-size: 16px; font-weight: 560; }
 .account-grid { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 36px; }
 @media (max-width: 900px) {
-  .stage-row, .account-grid { grid-template-columns: 1fr; }
-  .fit-badge { border-left: 0; border-top: 1px solid var(--line); }
+  .account-grid { grid-template-columns: 1fr; }
 }

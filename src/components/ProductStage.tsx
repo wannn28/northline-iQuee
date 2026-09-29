@@ -6,13 +6,14 @@ import * as THREE from 'three'
 import { chestWidthScale, heightScale } from '../lib/fit'
 
 const FRAME_URL = '/models/frame.glb'
-// CC0 male base mesh (male_base_mesh.glb from BoQsc/Godot-3D-Male-Base-Mesh 1.0.2). Not a primitive mannequin.
+// CC0 male base mesh (male_base_mesh.glb from BoQsc/Godot-3D-Male-Base-Mesh 1.0.2).
 const BODY_URL = '/models/body.glb'
 
 useGLTF.preload(FRAME_URL)
 useGLTF.preload(BODY_URL)
 
 export type BodyMotion = 'diam' | 'putar' | 'jalan'
+export type Garment = 'short' | 'long' | 'button'
 
 type StageProps = {
   kind: 'poster' | 'tee'
@@ -21,10 +22,12 @@ type StageProps = {
   weightKg?: number
   color?: string
   motion?: BodyMotion
-  /** Object URL for a visitor-picked PNG/JPEG. Never sent to the server. */
-  fabricUrl?: string | null
+  garment?: Garment
+  frontUrl?: string | null
+  backUrl?: string | null
 }
 
+const GARMENTS: Garment[] = ['short', 'long', 'button']
 const X_AXIS = new THREE.Vector3(1, 0, 0)
 const Y_AXIS = new THREE.Vector3(0, 1, 0)
 const _qa = new THREE.Quaternion()
@@ -34,12 +37,28 @@ const SHELL_OFFSET = 0.014
 const SLEEVE_T = 0.46
 const NECK_Y = 0.7
 const HEM_Y = 0.08
+const FRONT_NX = 0.22
 
-class StageBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
-  state = { failed: false }
+const WHITE = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
+WHITE.colorSpace = THREE.SRGBColorSpace
+WHITE.needsUpdate = true
+
+class StageBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode; resetKey: string },
+  { failed: boolean; resetKey: string }
+> {
+  state = { failed: false, resetKey: this.props.resetKey }
 
   static getDerivedStateFromError() {
     return { failed: true }
+  }
+
+  static getDerivedStateFromProps(
+    props: { resetKey: string },
+    state: { failed: boolean; resetKey: string },
+  ) {
+    if (props.resetKey !== state.resetKey) return { failed: false, resetKey: props.resetKey }
+    return null
   }
 
   render() {
@@ -73,48 +92,38 @@ function quatTrack(bone: THREE.Bone, times: number[], angles: number[], axis: TH
   return new THREE.QuaternionKeyframeTrack(`${bone.name}.quaternion`, times, values)
 }
 
-/** Rotation clips only. No scale, no visibility, no root translation. */
+/** Rotation clips only. Missing bones are skipped. No scale and no visibility tracks. */
 function poseClips(skinned: THREE.SkinnedMesh) {
-  const bone = (name: string) => {
-    const found = skinned.skeleton.getBoneByName(name)
-    if (!found) throw new Error(`missing bone ${name}`)
-    return found
-  }
+  const bone = (name: string) => skinned.skeleton.getBoneByName(name)
+  const diam: THREE.KeyframeTrack[] = []
+  const putar: THREE.KeyframeTrack[] = []
+  const jalan: THREE.KeyframeTrack[] = []
   const chest = bone('spine003')
   const ribs = bone('spine002')
   const hips = bone('spine')
-  const thighL = bone('thighL')
-  const thighR = bone('thighR')
-  const shinL = bone('shinL')
-  const shinR = bone('shinR')
+  if (chest) diam.push(quatTrack(chest, [0, 1.3, 2.6], [0, 0.09, 0], X_AXIS))
+  if (ribs) diam.push(quatTrack(ribs, [0, 1.3, 2.6], [0, 0.035, 0], X_AXIS))
+  if (hips) putar.push(quatTrack(hips, [0, 1, 2, 3, 4], [0, 0.5, 0, -0.5, 0], Y_AXIS))
+  const leg = (name: string, times: number[], angles: number[]) => {
+    const found = bone(name)
+    if (found) jalan.push(quatTrack(found, times, angles, X_AXIS))
+  }
+  leg('thighL', [0, 0.6, 1.2], [-0.55, 0.4, -0.55])
+  leg('thighR', [0, 0.6, 1.2], [0.4, -0.55, 0.4])
+  leg('shinL', [0, 0.6, 1.2], [0.55, 0.12, 0.55])
+  leg('shinR', [0, 0.6, 1.2], [0.12, 0.55, 0.12])
   return [
-    new THREE.AnimationClip('diam', 2.6, [
-      quatTrack(chest, [0, 1.3, 2.6], [0, 0.09, 0], X_AXIS),
-      quatTrack(ribs, [0, 1.3, 2.6], [0, 0.035, 0], X_AXIS),
-    ]),
-    new THREE.AnimationClip('putar', 4, [
-      quatTrack(hips, [0, 1, 2, 3, 4], [0, 0.5, 0, -0.5, 0], Y_AXIS),
-    ]),
-    new THREE.AnimationClip('jalan', 1.2, [
-      quatTrack(thighL, [0, 0.6, 1.2], [-0.55, 0.4, -0.55], X_AXIS),
-      quatTrack(thighR, [0, 0.6, 1.2], [0.4, -0.55, 0.4], X_AXIS),
-      quatTrack(shinL, [0, 0.6, 1.2], [0.55, 0.12, 0.55], X_AXIS),
-      quatTrack(shinR, [0, 0.6, 1.2], [0.12, 0.55, 0.12], X_AXIS),
-    ]),
+    new THREE.AnimationClip('diam', 2.6, diam),
+    new THREE.AnimationClip('putar', 4, putar),
+    new THREE.AnimationClip('jalan', 1.2, jalan),
   ]
 }
 
-type ClipSample = {
-  boneName: string
-  times: Float32Array
-  values: Float32Array
-}
+type ClipSample = { boneName: string; times: Float32Array; values: Float32Array }
 
 function samplesFor(clip: THREE.AnimationClip): ClipSample[] {
   return clip.tracks.map((track) => {
-    if (!(track instanceof THREE.QuaternionKeyframeTrack)) {
-      throw new Error('clips may only rotate bones')
-    }
+    if (!(track instanceof THREE.QuaternionKeyframeTrack)) throw new Error('clips may only rotate bones')
     return {
       boneName: track.name.replace(/\.quaternion$/, ''),
       times: track.times,
@@ -124,6 +133,7 @@ function samplesFor(clip: THREE.AnimationClip): ClipSample[] {
 }
 
 function sampleQuaternion(times: Float32Array, values: Float32Array, time: number, target: THREE.Quaternion) {
+  if (!times.length) return false
   let index = 0
   const last = times.length - 1
   while (index < last && times[index + 1] < time) index += 1
@@ -151,11 +161,57 @@ function dominantBone(names: string[], skinIndex: THREE.BufferAttribute, skinWei
   return names[best] ?? ''
 }
 
+type ArmFrame = {
+  origin: THREE.Vector3
+  elbow: THREE.Vector3
+  axis: THREE.Vector3
+  length: number
+  side: THREE.Vector3
+  bin: THREE.Vector3
+}
+
+function makeArm(mesh: THREE.SkinnedMesh, side: 'L' | 'R'): ArmFrame {
+  const upper = mesh.skeleton.getBoneByName(`upper_arm${side}`)
+  const fore = mesh.skeleton.getBoneByName(`forearm${side}`)
+  const hand = mesh.skeleton.getBoneByName(`hand${side}`)
+  if (!upper || !fore) throw new Error('arm bones missing')
+  const origin = new THREE.Vector3().setFromMatrixPosition(upper.matrixWorld)
+  const elbow = new THREE.Vector3().setFromMatrixPosition(fore.matrixWorld)
+  const wrist = hand ? new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld) : elbow.clone()
+  const axis = wrist.clone().sub(origin)
+  const length = Math.max(1e-4, axis.length())
+  axis.multiplyScalar(1 / length)
+  const up = Math.abs(axis.y) > 0.92 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0)
+  const sideAxis = new THREE.Vector3().crossVectors(axis, up).normalize()
+  const bin = new THREE.Vector3().crossVectors(sideAxis, axis).normalize()
+  return { origin, elbow, axis, length, side: sideAxis, bin }
+}
+
+type ShellVert = {
+  x: number
+  y: number
+  z: number
+  nx: number
+  ny: number
+  nz: number
+  skinI: number[]
+  skinW: number[]
+  sleeve: boolean
+  arm: 'L' | 'R'
+  region: number
+  u: number
+  v: number
+}
+
+function clamp01(n: number) {
+  return Math.min(1, Math.max(0, n))
+}
+
 /**
- * Short-sleeve tee carved from a clone of the CC0 body mesh.
- * Same vertex skin indices and the same skeleton. Not a separate shirt file.
+ * Skinned garment carved from the CC0 body. One shell per style, same skeleton.
+ * UVs: front image on the front, back image on the back, sides stay untextured.
  */
-function buildTeeShell(mesh: THREE.SkinnedMesh) {
+function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment) {
   const source = mesh.geometry
   const position = source.getAttribute('position') as THREE.BufferAttribute
   const normal = source.getAttribute('normal') as THREE.BufferAttribute
@@ -165,15 +221,7 @@ function buildTeeShell(mesh: THREE.SkinnedMesh) {
   if (!position || !normal || !skinIndex || !skinWeight || !index) throw new Error('body attributes missing')
 
   mesh.skeleton.update()
-  const arm = (side: 'L' | 'R') => {
-    const upper = mesh.skeleton.getBoneByName(`upper_arm${side}`)
-    const fore = mesh.skeleton.getBoneByName(`forearm${side}`)
-    if (!upper || !fore) throw new Error('arm bones missing')
-    const origin = new THREE.Vector3().setFromMatrixPosition(upper.matrixWorld)
-    const elbow = new THREE.Vector3().setFromMatrixPosition(fore.matrixWorld)
-    return { origin, elbow }
-  }
-  const arms = { L: arm('L'), R: arm('R') }
+  const arms = { L: makeArm(mesh, 'L'), R: makeArm(mesh, 'R') }
   const point = new THREE.Vector3()
   const along = new THREE.Vector3()
   const sleeveT = (x: number, y: number, z: number) => {
@@ -181,106 +229,327 @@ function buildTeeShell(mesh: THREE.SkinnedMesh) {
     const { origin, elbow } = arms[side]
     along.copy(elbow).sub(origin)
     point.set(x, y, z).sub(origin)
-    return point.dot(along) / along.lengthSq()
+    return point.dot(along) / Math.max(1e-6, along.lengthSq())
+  }
+  const wristT = (side: 'L' | 'R', x: number, y: number, z: number) => {
+    const frame = arms[side]
+    point.set(x, y, z).sub(frame.origin)
+    return point.dot(frame.axis) / frame.length
+  }
+  const aroundArm = (side: 'L' | 'R', x: number, y: number, z: number) => {
+    const frame = arms[side]
+    point.set(x, y, z).sub(frame.origin)
+    const a = point.dot(frame.side)
+    const b = point.dot(frame.bin)
+    return (Math.atan2(b, a) / (Math.PI * 2) + 1) % 1
   }
 
   const names = mesh.skeleton.bones.map((bone) => bone.name)
   const keep = new Uint8Array(position.count)
+  const longArm = garment !== 'short'
   for (let vertex = 0; vertex < position.count; vertex += 1) {
     const bone = dominantBone(names, skinIndex, skinWeight, vertex)
     const y = position.getY(vertex)
-    if (y >= NECK_Y) continue
-    if (TORSO_BONES.has(bone) && y > HEM_Y) {
+    if (y >= NECK_Y || y <= HEM_Y) continue
+    if (TORSO_BONES.has(bone)) {
       keep[vertex] = 1
       continue
     }
-    if ((bone === 'upper_armL' || bone === 'upper_armR') && y > HEM_Y && sleeveT(position.getX(vertex), y, position.getZ(vertex)) < SLEEVE_T) {
-      keep[vertex] = 1
+    if (bone === 'upper_armL' || bone === 'upper_armR') {
+      if (longArm || sleeveT(position.getX(vertex), y, position.getZ(vertex)) < SLEEVE_T) keep[vertex] = 1
+      continue
     }
+    if (longArm && (bone === 'forearmL' || bone === 'forearmR')) keep[vertex] = 1
   }
 
+  const verts: ShellVert[] = []
   const remap = new Int32Array(position.count).fill(-1)
-  const kept: number[] = []
+  const offset = new THREE.Vector3()
   for (let vertex = 0; vertex < position.count; vertex += 1) {
     if (!keep[vertex]) continue
-    remap[vertex] = kept.length
-    kept.push(vertex)
+    offset.fromBufferAttribute(normal, vertex)
+    if (offset.lengthSq() < 1e-8) offset.set(0, 0, 1)
+    else offset.normalize()
+    const bone = dominantBone(names, skinIndex, skinWeight, vertex)
+    const x = position.getX(vertex)
+    const y = position.getY(vertex)
+    const z = position.getZ(vertex)
+    const sleeve = bone.startsWith('upper_arm') || bone.startsWith('forearm')
+    const arm: 'L' | 'R' = z < 0 ? 'L' : 'R'
+    const region = offset.x > FRONT_NX ? 1 : offset.x < -FRONT_NX ? 2 : 0
+    const vert: ShellVert = {
+      x: x + offset.x * SHELL_OFFSET,
+      y: y + offset.y * SHELL_OFFSET,
+      z: z + offset.z * SHELL_OFFSET,
+      nx: offset.x,
+      ny: offset.y,
+      nz: offset.z,
+      skinI: [0, 0, 0, 0],
+      skinW: [0, 0, 0, 0],
+      sleeve,
+      arm,
+      region,
+      u: 0,
+      v: 0,
+    }
+    for (let slot = 0; slot < 4; slot += 1) {
+      vert.skinI[slot] = skinIndex.getComponent(vertex, slot)
+      vert.skinW[slot] = skinWeight.getComponent(vertex, slot)
+    }
+    assignUv(vert, region, sleeve, wristT, aroundArm)
+    remap[vertex] = verts.length
+    verts.push(vert)
   }
 
   const indices: number[] = []
+  const opening = (ids: number[]) => {
+    if (garment !== 'button') return false
+    let nx = 0
+    let ax = 0
+    let ay = 0
+    let minZ = Infinity
+    let maxZ = -Infinity
+    for (const id of ids) {
+      const vert = verts[id]
+      nx += vert.nx
+      ax += vert.x
+      ay += vert.y
+      minZ = Math.min(minZ, vert.z)
+      maxZ = Math.max(maxZ, vert.z)
+    }
+    nx /= 3
+    ax /= 3
+    ay /= 3
+    const crosses = minZ < 0.01 && maxZ > -0.01
+    return nx > 0.2 && ax > 0 && ay < 0.63 && crosses && maxZ - minZ < 0.08
+  }
+
+  const emit = (ids: number[], asSleeve: boolean) => {
+    const score = [0, 0, 0]
+    for (const id of ids) score[verts[id].region] += 1
+    let pick = 0
+    if (score[1] > 0 && score[1] >= score[2] && score[1] >= score[0]) pick = 1
+    else if (score[2] > 0 && score[2] >= score[0]) pick = 2
+    const out = ids.map((id) => {
+      const vert = verts[id]
+      if (vert.region === pick && vert.sleeve === asSleeve) return id
+      const copy: ShellVert = {
+        ...vert,
+        skinI: vert.skinI.slice(),
+        skinW: vert.skinW.slice(),
+        region: pick,
+        sleeve: asSleeve,
+      }
+      assignUv(copy, pick, asSleeve, wristT, aroundArm)
+      verts.push(copy)
+      return verts.length - 1
+    })
+    indices.push(out[0], out[1], out[2])
+  }
+
   for (let face = 0; face < index.count; face += 3) {
     const a = index.getX(face)
     const b = index.getX(face + 1)
     const c = index.getX(face + 2)
-    if (keep[a] && keep[b] && keep[c]) indices.push(remap[a], remap[b], remap[c])
+    if (!keep[a] || !keep[b] || !keep[c]) continue
+    const ids = [remap[a], remap[b], remap[c]]
+    if (opening(ids)) continue
+    const sleeveVotes = ids.filter((id) => verts[id].sleeve).length
+    emit(ids, sleeveVotes >= 2)
   }
-  if (indices.length < 30) throw new Error('tee shell is empty')
+  if (indices.length < 30) throw new Error('garment shell is empty')
 
-  const positions = new Float32Array(kept.length * 3)
-  const normals = new Float32Array(kept.length * 3)
-  const uvs = new Float32Array(kept.length * 2)
-  const nextIndex = new Uint16Array(kept.length * 4)
-  const nextWeight = new Float32Array(kept.length * 4)
-  let minY = Infinity
-  let maxY = -Infinity
-  let minZ = Infinity
-  let maxZ = -Infinity
-  const offset = new THREE.Vector3()
-  for (let n = 0; n < kept.length; n += 1) {
-    const vertex = kept[n]
-    offset.fromBufferAttribute(normal, vertex)
-    if (offset.lengthSq() < 1e-8) offset.set(0, 0, 1)
-    else offset.normalize()
-    const x = position.getX(vertex) + offset.x * SHELL_OFFSET
-    const y = position.getY(vertex) + offset.y * SHELL_OFFSET
-    const z = position.getZ(vertex) + offset.z * SHELL_OFFSET
-    positions[n * 3] = x
-    positions[n * 3 + 1] = y
-    positions[n * 3 + 2] = z
-    normals[n * 3] = offset.x
-    normals[n * 3 + 1] = offset.y
-    normals[n * 3 + 2] = offset.z
-    minY = Math.min(minY, y)
-    maxY = Math.max(maxY, y)
-    minZ = Math.min(minZ, z)
-    maxZ = Math.max(maxZ, z)
+  if (garment === 'button') addCollar(verts, indices, wristT, aroundArm)
+
+  const positions = new Float32Array(verts.length * 3)
+  const normals = new Float32Array(verts.length * 3)
+  const uvs = new Float32Array(verts.length * 2)
+  const regions = new Float32Array(verts.length)
+  const skinI = new Uint16Array(verts.length * 4)
+  const skinW = new Float32Array(verts.length * 4)
+  for (let n = 0; n < verts.length; n += 1) {
+    const vert = verts[n]
+    positions[n * 3] = vert.x
+    positions[n * 3 + 1] = vert.y
+    positions[n * 3 + 2] = vert.z
+    normals[n * 3] = vert.nx
+    normals[n * 3 + 1] = vert.ny
+    normals[n * 3 + 2] = vert.nz
+    uvs[n * 2] = vert.u
+    uvs[n * 2 + 1] = vert.v
+    regions[n] = vert.region
     for (let slot = 0; slot < 4; slot += 1) {
-      nextIndex[n * 4 + slot] = skinIndex.getComponent(vertex, slot)
-      nextWeight[n * 4 + slot] = skinWeight.getComponent(vertex, slot)
+      skinI[n * 4 + slot] = vert.skinI[slot]
+      skinW[n * 4 + slot] = vert.skinW[slot]
     }
   }
-  const spanY = Math.max(1e-4, maxY - minY)
-  const spanZ = Math.max(1e-4, maxZ - minZ)
-  for (let n = 0; n < kept.length; n += 1) {
-    const y = positions[n * 3 + 1]
-    const z = positions[n * 3 + 2]
-    uvs[n * 2] = (z - minZ) / spanZ
-    uvs[n * 2 + 1] = (y - minY) / spanY
-  }
-
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
   geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3))
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
-  geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(nextIndex, 4))
-  geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(nextWeight, 4))
+  geometry.setAttribute('region', new THREE.BufferAttribute(regions, 1))
+  geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinI, 4))
+  geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinW, 4))
   geometry.setIndex(indices)
   geometry.computeVertexNormals()
   return geometry
+}
+
+function assignUv(
+  vert: ShellVert,
+  region: number,
+  asSleeve: boolean,
+  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+) {
+  vert.region = region
+  if (region === 0) {
+    vert.u = 0
+    vert.v = 0
+    return
+  }
+  const height = clamp01((vert.y - HEM_Y) / (0.66 - HEM_Y))
+  if (!asSleeve) {
+    if (region === 1) {
+      const ang = Math.atan2(vert.z, Math.max(vert.x, 0.02))
+      vert.u = clamp01(0.18 + ((ang + 1.15) / 2.3) * 0.64)
+    } else {
+      const ang = Math.atan2(vert.z, Math.min(vert.x, -0.02))
+      const centered = ang > 0 ? Math.PI - ang : -Math.PI - ang
+      vert.u = clamp01(0.18 + ((centered + 1.15) / 2.3) * 0.64)
+    }
+    vert.v = 0.04 + height * 0.92
+    return
+  }
+  const around = aroundArm(vert.arm, vert.x, vert.y, vert.z)
+  const along = clamp01(1 - wristT(vert.arm, vert.x, vert.y, vert.z))
+  const strip = vert.arm === 'L' ? 0.02 + around * 0.14 : 0.84 + around * 0.14
+  vert.u = strip
+  vert.v = 0.08 + along * 0.84
+}
+
+function addCollar(
+  verts: ShellVert[],
+  indices: number[],
+  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+) {
+  const edge = new Map<string, number>()
+  const key = (a: number, b: number) => (a < b ? `${a}|${b}` : `${b}|${a}`)
+  for (let face = 0; face < indices.length; face += 3) {
+    const tri = [indices[face], indices[face + 1], indices[face + 2]]
+    for (let k = 0; k < 3; k += 1) {
+      const id = key(tri[k], tri[(k + 1) % 3])
+      edge.set(id, (edge.get(id) ?? 0) + 1)
+    }
+  }
+  const raised = new Map<number, number>()
+  const lift = (id: number) => {
+    const existing = raised.get(id)
+    if (existing !== undefined) return existing
+    const src = verts[id]
+    const copy: ShellVert = {
+      ...src,
+      skinI: src.skinI.slice(),
+      skinW: src.skinW.slice(),
+      x: src.x + src.nx * 0.012,
+      y: src.y + 0.032 + src.ny * 0.008,
+      z: src.z + src.nz * 0.012,
+      sleeve: false,
+    }
+    copy.region = copy.nx > FRONT_NX ? 1 : copy.nx < -FRONT_NX ? 2 : 0
+    assignUv(copy, copy.region, false, wristT, aroundArm)
+    verts.push(copy)
+    const next = verts.length - 1
+    raised.set(id, next)
+    return next
+  }
+  for (const [id, count] of edge) {
+    if (count !== 1) continue
+    const [a, b] = id.split('|').map(Number)
+    const va = verts[a]
+    const vb = verts[b]
+    if (va.y < 0.6 || vb.y < 0.6) continue
+    const mx = (va.x + vb.x) / 2
+    const mz = (va.z + vb.z) / 2
+    if (mx > 0.02 && Math.abs(mz) < 0.02) continue
+    const ra = lift(a)
+    const rb = lift(b)
+    indices.push(a, b, rb, a, rb, ra)
+  }
 }
 
 type RigHandle = {
   stand: THREE.Group
   bones: THREE.Bone[]
   baseQuat: Map<string, THREE.Quaternion>
-  fromQuat: Map<string, THREE.Quaternion>
-  desiredQuat: Map<string, THREE.Quaternion>
+  boneByName: Map<string, THREE.Bone>
   clips: Record<BodyMotion, THREE.AnimationClip>
   samples: Record<BodyMotion, ClipSample[]>
+  shells: Record<Garment, THREE.SkinnedMesh>
   shellMat: THREE.MeshStandardMaterial
   applyWeight: (weightKg: number) => void
   time: number
-  blend: number
+}
+
+function createClothMaterial(color: string) {
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    map: WHITE,
+    roughness: 0.86,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  })
+  material.userData.frontMap = WHITE
+  material.userData.backMap = WHITE
+  material.userData.hasFront = 0
+  material.userData.hasBack = 0
+  material.customProgramCacheKey = () => 'northline-cloth-regions-1'
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.frontMap = { value: material.userData.frontMap }
+    shader.uniforms.backMap = { value: material.userData.backMap }
+    shader.uniforms.hasFront = { value: material.userData.hasFront }
+    shader.uniforms.hasBack = { value: material.userData.hasBack }
+    material.userData.clothShader = shader
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <uv_pars_vertex>', '#include <uv_pars_vertex>\nattribute float region;\nvarying float vRegion;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvRegion = region;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <uv_pars_fragment>',
+        `#include <uv_pars_fragment>
+uniform sampler2D frontMap;
+uniform sampler2D backMap;
+uniform float hasFront;
+uniform float hasBack;
+varying float vRegion;`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `if (hasFront > 0.5 && vRegion > 0.5 && vRegion < 1.5) {
+  diffuseColor.rgb = texture2D(frontMap, vMapUv).rgb;
+} else if (hasBack > 0.5 && vRegion > 1.5) {
+  diffuseColor.rgb = texture2D(backMap, vMapUv).rgb;
+}`,
+      )
+  }
+  return material
+}
+
+function applyClothMaps(material: THREE.MeshStandardMaterial, front: THREE.Texture | null, back: THREE.Texture | null) {
+  material.userData.frontMap = front ?? WHITE
+  material.userData.backMap = back ?? WHITE
+  material.userData.hasFront = front ? 1 : 0
+  material.userData.hasBack = back ? 1 : 0
+  const shader = material.userData.clothShader as { uniforms: Record<string, { value: unknown }> } | undefined
+  if (!shader) return
+  shader.uniforms.frontMap.value = material.userData.frontMap
+  shader.uniforms.backMap.value = material.userData.backMap
+  shader.uniforms.hasFront.value = material.userData.hasFront
+  shader.uniforms.hasBack.value = material.userData.hasBack
 }
 
 function assembleRig(bodyScene: THREE.Object3D): RigHandle {
@@ -291,35 +560,38 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
   })
   if (!skinned) throw new Error('body mesh missing')
   const mesh = skinned as THREE.SkinnedMesh
-  mesh.material = new THREE.MeshStandardMaterial({ color: '#e0b8a2', roughness: 0.68, metalness: 0 })
+  mesh.material = new THREE.MeshStandardMaterial({
+    color: '#e0b8a2',
+    roughness: 0.68,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  })
   mesh.frustumCulled = false
   mesh.castShadow = false
   mesh.name = 'BodySkin'
+  mesh.visible = true
 
   rig.updateMatrixWorld(true)
-  const shellMat = new THREE.MeshStandardMaterial({
-    color: '#2c3338',
-    roughness: 0.86,
-    metalness: 0,
-    side: THREE.FrontSide,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  })
-  const shell = new THREE.SkinnedMesh(buildTeeShell(mesh), shellMat)
-  shell.name = 'TeeShell'
-  shell.frustumCulled = false
-  shell.castShadow = false
-  shell.renderOrder = 2
-  shell.bind(mesh.skeleton, mesh.bindMatrix)
-  mesh.parent?.add(shell)
+  const shellMat = createClothMaterial('#2c3338')
+  const shells = {} as Record<Garment, THREE.SkinnedMesh>
+  for (const garment of GARMENTS) {
+    const shell = new THREE.SkinnedMesh(buildGarment(mesh, garment), shellMat)
+    shell.name = `TeeShell-${garment}`
+    shell.frustumCulled = false
+    shell.castShadow = false
+    shell.renderOrder = 2
+    shell.visible = garment === 'short'
+    shell.bind(mesh.skeleton, mesh.bindMatrix)
+    mesh.parent?.add(shell)
+    shells[garment] = shell
+  }
 
   const baseScale = new Map<THREE.Bone, THREE.Vector3>()
   for (const bone of mesh.skeleton.bones) baseScale.set(bone, bone.scale.clone())
 
   const girth = (name: string, factor: number) => {
     const bone = mesh.skeleton.getBoneByName(name)
-    if (!bone) return
+    if (!bone || !Number.isFinite(factor) || factor <= 0) return
     const base = baseScale.get(bone)
     if (!base) return
     bone.scale.set(base.x * factor, base.y, base.z * factor)
@@ -350,12 +622,10 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
   }
 
   const baseQuat = new Map<string, THREE.Quaternion>()
-  const fromQuat = new Map<string, THREE.Quaternion>()
-  const desiredQuat = new Map<string, THREE.Quaternion>()
+  const boneByName = new Map<string, THREE.Bone>()
   for (const bone of mesh.skeleton.bones) {
     baseQuat.set(bone.name, bone.quaternion.clone())
-    fromQuat.set(bone.name, bone.quaternion.clone())
-    desiredQuat.set(bone.name, bone.quaternion.clone())
+    boneByName.set(bone.name, bone)
   }
 
   const stand = new THREE.Group()
@@ -363,25 +633,24 @@ function assembleRig(bodyScene: THREE.Object3D): RigHandle {
   stand.rotation.y = -Math.PI / 2
   stand.position.y = 0.997
   stand.add(rig)
-  return {
-    stand,
-    bones: mesh.skeleton.bones,
-    baseQuat,
-    fromQuat,
-    desiredQuat,
-    clips,
-    samples,
-    shellMat,
-    applyWeight,
-    time: 0,
-    blend: 1,
-  }
+  return { stand, bones: mesh.skeleton.bones, baseQuat, boneByName, clips, samples, shells, shellMat, applyWeight, time: 0 }
 }
 
-function paintShell(material: THREE.MeshStandardMaterial, color: string, map: THREE.Texture | null) {
-  material.map = map
-  material.color.set(map ? '#ffffff' : color)
-  material.needsUpdate = true
+function paintShell(material: THREE.MeshStandardMaterial, color: string) {
+  material.color.set(color)
+}
+
+function loadImageTexture(url: string, done: (texture: THREE.Texture) => void) {
+  const loader = new THREE.TextureLoader()
+  loader.load(url, (texture) => {
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.flipY = true
+    texture.anisotropy = 8
+    texture.wrapS = THREE.ClampToEdgeWrapping
+    texture.wrapT = THREE.ClampToEdgeWrapping
+    texture.needsUpdate = true
+    done(texture)
+  })
 }
 
 function TeeRig({
@@ -389,89 +658,102 @@ function TeeRig({
   weightKg,
   color,
   motion,
-  fabricUrl,
+  garment,
+  frontUrl,
+  backUrl,
 }: {
   heightCm: number
   weightKg: number
   color: string
   motion: BodyMotion
-  fabricUrl: string | null
+  garment: Garment
+  frontUrl: string | null
+  backUrl: string | null
 }) {
   const bodyGltf = useGLTF(BODY_URL)
   const rig = useMemo(() => assembleRig(bodyGltf.scene), [bodyGltf.scene])
-  const fabricMap = useRef<THREE.Texture | null>(null)
+  const frontMap = useRef<THREE.Texture | null>(null)
+  const backMap = useRef<THREE.Texture | null>(null)
   const scratch = useMemo(() => new THREE.Quaternion(), [])
 
   useEffect(() => {
-    for (const bone of rig.bones) {
-      const from = rig.fromQuat.get(bone.name)
-      if (from) from.copy(bone.quaternion)
-    }
-    rig.blend = 0
     rig.time = 0
   }, [motion, rig])
 
   useEffect(() => {
+    for (const kind of GARMENTS) rig.shells[kind].visible = kind === garment
+  }, [garment, rig])
+
+  useEffect(() => {
     let alive = true
-    if (!fabricUrl) {
-      fabricMap.current?.dispose()
-      fabricMap.current = null
-      paintShell(rig.shellMat, color, null)
+    if (!frontUrl) {
+      frontMap.current?.dispose()
+      frontMap.current = null
+      applyClothMaps(rig.shellMat, null, backMap.current)
       return
     }
-    const loader = new THREE.TextureLoader()
-    loader.load(fabricUrl, (texture) => {
+    loadImageTexture(frontUrl, (texture) => {
       if (!alive) {
         texture.dispose()
         return
       }
-      fabricMap.current?.dispose()
-      texture.colorSpace = THREE.SRGBColorSpace
-      texture.flipY = true
-      texture.anisotropy = 8
-      texture.wrapS = THREE.ClampToEdgeWrapping
-      texture.wrapT = THREE.ClampToEdgeWrapping
-      texture.needsUpdate = true
-      fabricMap.current = texture
-      paintShell(rig.shellMat, color, texture)
+      frontMap.current?.dispose()
+      frontMap.current = texture
+      applyClothMaps(rig.shellMat, texture, backMap.current)
     })
     return () => {
       alive = false
     }
-  }, [fabricUrl, rig])
+  }, [frontUrl, rig])
 
   useEffect(() => {
-    paintShell(rig.shellMat, color, fabricMap.current)
-  }, [color, fabricUrl, rig])
+    let alive = true
+    if (!backUrl) {
+      backMap.current?.dispose()
+      backMap.current = null
+      applyClothMaps(rig.shellMat, frontMap.current, null)
+      return
+    }
+    loadImageTexture(backUrl, (texture) => {
+      if (!alive) {
+        texture.dispose()
+        return
+      }
+      backMap.current?.dispose()
+      backMap.current = texture
+      applyClothMaps(rig.shellMat, frontMap.current, texture)
+    })
+    return () => {
+      alive = false
+    }
+  }, [backUrl, rig])
+
+  useEffect(() => {
+    paintShell(rig.shellMat, color)
+  }, [color, rig])
 
   useEffect(() => {
     return () => {
-      fabricMap.current?.dispose()
-      fabricMap.current = null
+      frontMap.current?.dispose()
+      backMap.current?.dispose()
+      frontMap.current = null
+      backMap.current = null
     }
   }, [])
 
   useFrame((_, delta) => {
-    rig.blend = Math.min(1, rig.blend + delta / 0.25)
     const clip = rig.clips[motion]
     rig.time = (rig.time + delta) % clip.duration
+    const wrapped = ((rig.time % clip.duration) + clip.duration) % clip.duration
     for (const bone of rig.bones) {
       const base = rig.baseQuat.get(bone.name)
-      const desired = rig.desiredQuat.get(bone.name)
-      if (base && desired) desired.copy(base)
+      if (base) bone.quaternion.copy(base)
     }
-    const wrapped = ((rig.time % clip.duration) + clip.duration) % clip.duration
     for (const sample of rig.samples[motion]) {
-      const desired = rig.desiredQuat.get(sample.boneName)
-      if (!desired) continue
+      const bone = rig.boneByName.get(sample.boneName)
+      if (!bone) continue
       if (!sampleQuaternion(sample.times, sample.values, wrapped, scratch)) continue
-      desired.copy(scratch)
-    }
-    for (const bone of rig.bones) {
-      const from = rig.fromQuat.get(bone.name)
-      const desired = rig.desiredQuat.get(bone.name)
-      if (!from || !desired) continue
-      bone.quaternion.copy(from).slerp(desired, rig.blend)
+      bone.quaternion.copy(scratch)
     }
     rig.applyWeight(weightKg)
   })
@@ -530,7 +812,6 @@ function FrameModel({ artUrl }: { artUrl: string }) {
   const texture = useArtTexture(artUrl)
   const { scene } = useGLTF(FRAME_URL)
   const root = useMemo(() => cloneWithMaterials(scene), [scene])
-
   return (
     <group>
       <primitive object={root} />
@@ -549,7 +830,9 @@ function View({
   weightKg,
   color,
   motion,
-  fabricUrl,
+  garment,
+  frontUrl,
+  backUrl,
 }: Required<StageProps>) {
   const controls = useRef<React.ComponentRef<typeof OrbitControls>>(null)
   const hs = heightScale(heightCm)
@@ -565,7 +848,15 @@ function View({
       <directionalLight position={[-2.4, 1.6, -1.8]} intensity={0.55} />
       <Suspense fallback={null}>
         {kind === 'tee' ? (
-          <TeeRig heightCm={heightCm} weightKg={weightKg} color={color} motion={motion} fabricUrl={fabricUrl} />
+          <TeeRig
+            heightCm={heightCm}
+            weightKg={weightKg}
+            color={color}
+            motion={motion}
+            garment={garment}
+            frontUrl={frontUrl}
+            backUrl={backUrl}
+          />
         ) : (
           <FrameModel artUrl={`/products/${handle}.svg`} />
         )}
@@ -594,18 +885,19 @@ export function ProductStage({
   weightKg = 70,
   color = '#2c3338',
   motion = 'diam',
-  fabricUrl = null,
+  garment = 'short',
+  frontUrl = null,
+  backUrl = null,
 }: StageProps) {
   const hs = heightScale(heightCm)
   const camera =
     kind === 'tee'
       ? { position: [1.15, 1.05 * hs, 4.15] as [number, number, number], fov: 32 }
       : { position: [0.55, 0.15, 2.25] as [number, number, number], fov: 35 }
-
   const fallback = <div className="stage-fallback">3D preview unavailable</div>
 
   return (
-    <StageBoundary fallback={fallback}>
+    <StageBoundary resetKey={motion} fallback={fallback}>
       <Canvas
         key={`${kind}:${handle}`}
         className="viewer"
@@ -627,7 +919,9 @@ export function ProductStage({
           weightKg={weightKg}
           color={color}
           motion={motion}
-          fabricUrl={fabricUrl}
+          garment={garment}
+          frontUrl={frontUrl}
+          backUrl={backUrl}
         />
       </Canvas>
     </StageBoundary>

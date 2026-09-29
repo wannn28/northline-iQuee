@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAccount } from '../account'
 
 export function AccountPage() {
-  const { email, characters, active, register, login, logout, addCharacter, selectCharacter } = useAccount()
+  const { email, characters, active, register, login, logout, addCharacter, selectCharacter, updateCharacter } = useAccount()
   const [mode, setMode] = useState<'login' | 'register'>('register')
   const [error, setError] = useState('')
   const [addError, setAddError] = useState('')
@@ -19,6 +19,7 @@ export function AccountPage() {
             name: String(form.get('name') || ''),
             heightCm: Number(form.get('height')),
             weightKg: Number(form.get('weight')),
+            gender: String(form.get('gender') || 'male') === 'female' ? 'female' : 'male',
           })
         : login(String(form.get('email') || ''), String(form.get('password') || ''))
     setError(nextError ?? '')
@@ -31,6 +32,7 @@ export function AccountPage() {
       name: String(form.get('name') || ''),
       heightCm: Number(form.get('height')),
       weightKg: Number(form.get('weight')),
+      gender: String(form.get('gender') || 'male') === 'female' ? 'female' : 'male',
     })
     setAddError(nextError ?? '')
     if (!nextError) event.currentTarget.reset()
@@ -65,17 +67,38 @@ export function AccountPage() {
                   >
                     {character.name}
                     <small>
-                      {character.heightCm} cm · {character.weightKg} kg
+                      {character.gender === 'female' ? 'Female' : 'Male'} · {character.heightCm} cm · {character.weightKg} kg
                     </small>
                   </button>
                 </li>
               ))}
             </ul>
+            {active && (
+              <label className="field">
+                <span>Gender for {active.name}</span>
+                <select
+                  value={active.gender}
+                  onChange={(event) =>
+                    updateCharacter(active.id, { gender: event.target.value === 'female' ? 'female' : 'male' })
+                  }
+                >
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </label>
+            )}
             <form onSubmit={onAdd}>
               <h3>Add a character</h3>
               <label className="field">
                 <span>Name</span>
                 <input name="name" required maxLength={40} />
+              </label>
+              <label className="field">
+                <span>Gender</span>
+                <select name="gender" defaultValue="male">
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
               </label>
               <div className="row-2">
                 <label className="field">
@@ -121,6 +144,13 @@ export function AccountPage() {
                 <label className="field">
                   <span>Character name</span>
                   <input name="name" required maxLength={40} />
+                </label>
+                <label className="field">
+                  <span>Gender</span>
+                  <select name="gender" defaultValue="male">
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
                 </label>
                 <div className="row-2">
                   <label className="field">

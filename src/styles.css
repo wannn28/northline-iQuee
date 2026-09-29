@@ -267,6 +267,13 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
 .stage canvas { display: block; touch-action: none; }
 .stage-caption { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 .anim-picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.garment-picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.fabric-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; max-width: 520px; }
+.fabric-row .fabric-field { margin-top: 0; }
+@media (max-width: 640px) {
+  .fabric-row { grid-template-columns: 1fr; }
+}
+
 .credits a { color: inherit; }
 .swatches { display: flex; gap: 10px; margin: 0 0 18px; }
 .swatch {

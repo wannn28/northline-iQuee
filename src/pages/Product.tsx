@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { fetchProduct } from '../api'
 import { useAccount } from '../account'
 import { useCart } from '../cart'
-import { ProductStage, type BodyMotion } from '../components/ProductStage'
+import { ProductStage, type BodyMotion, type Garment } from '../components/ProductStage'
 import { DEMO_SIZE_CHART, estimatedChestCm, fitFor, fitGloss } from '../lib/fit'
 import { TEE_COLORS, defaultTeeColor } from '../teeColors'
 import { money, type Product } from '../types'
@@ -56,7 +56,9 @@ export function ProductPage() {
   const [added, setAdded] = useState(false)
   const [color, setColor] = useState(() => defaultTeeColor(handle))
   const [motion, setMotion] = useState<BodyMotion>('diam')
-  const [fabricUrl, setFabricUrl] = useState<string | null>(null)
+  const [garment, setGarment] = useState<Garment>('short')
+  const [frontUrl, setFrontUrl] = useState<string | null>(null)
+  const [backUrl, setBackUrl] = useState<string | null>(null)
   const [addError, setAddError] = useState('')
 
   useEffect(() => {
@@ -65,7 +67,12 @@ export function ProductPage() {
     setError('')
     setColor(defaultTeeColor(handle))
     setMotion('diam')
-    setFabricUrl((current) => {
+    setGarment('short')
+    setFrontUrl((current) => {
+      if (current) URL.revokeObjectURL(current)
+      return null
+    })
+    setBackUrl((current) => {
       if (current) URL.revokeObjectURL(current)
       return null
     })
@@ -100,27 +107,32 @@ export function ProductPage() {
   const fit = product.kind === 'tee' && variant ? fitFor(variant.label, chest) : null
 
 
-  function onFabricFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-    const name = file.name.toLowerCase()
-    const png = file.type === 'image/png' || name.endsWith('.png')
-    const jpeg = file.type === 'image/jpeg' || name.endsWith('.jpg') || name.endsWith('.jpeg')
-    if (!png && !jpeg) return
-    const url = URL.createObjectURL(file)
-    setFabricUrl((current) => {
-      if (current) URL.revokeObjectURL(current)
-      return url
-    })
+  function onSideFile(side: 'front' | 'back') {
+    return (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+      const name = file.name.toLowerCase()
+      const png = file.type === 'image/png' || name.endsWith('.png')
+      const jpeg = file.type === 'image/jpeg' || name.endsWith('.jpg') || name.endsWith('.jpeg')
+      if (!png && !jpeg) return
+      const url = URL.createObjectURL(file)
+      const setUrl = side === 'front' ? setFrontUrl : setBackUrl
+      setUrl((current) => {
+        if (current) URL.revokeObjectURL(current)
+        return url
+      })
+    }
   }
 
   function onAddCharacter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const gender = String(form.get('gender') || 'male') === 'female' ? 'female' : 'male'
     const nextError = account.addCharacter({
       name: String(form.get('name') || ''),
       heightCm: Number(form.get('height')),
       weightKg: Number(form.get('weight')),
+      gender,
     })
     setAddError(nextError ?? '')
     if (!nextError) event.currentTarget.reset()
@@ -137,6 +149,9 @@ export function ProductPage() {
             data-weight={weightKg}
             data-chest={chest}
             data-fit={fit ?? ''}
+            data-character={account.active?.id ?? ''}
+            data-gender={account.active?.gender ?? 'male'}
+            data-garment={garment}
           >
             <ProductStage
               kind={product.kind}
@@ -145,7 +160,9 @@ export function ProductPage() {
               weightKg={weightKg}
               color={color}
               motion={motion}
-              fabricUrl={fabricUrl}
+              garment={garment}
+              frontUrl={frontUrl}
+              backUrl={backUrl}
             />
           </div>
         </div>
@@ -156,6 +173,35 @@ export function ProductPage() {
         </p>
         {product.kind === 'tee' && (
           <>
+            {account.active ? (
+              <p className="stage-caption preview-follows">
+                Preview follows {account.active.name} ({account.active.gender === 'female' ? 'female' : 'male'}, {account.active.heightCm} cm, {account.active.weightKg} kg).
+              </p>
+            ) : null}
+            {account.active?.gender === 'female' ? (
+              <p className="stage-caption">
+                No separate CC0 female base mesh is loaded, so the body shown is still the CC0 male mesh.
+              </p>
+            ) : null}
+            <div className="garment-picker" role="group" aria-label="Garment">
+              {(
+                [
+                  ['short', 'Short sleeve'],
+                  ['long', 'Long sleeve'],
+                  ['button', 'Button shirt'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={garment === id ? 'size on' : 'size'}
+                  aria-pressed={garment === id}
+                  onClick={() => setGarment(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="anim-picker" role="group" aria-label="Animation">
               {(
                 [
@@ -175,16 +221,26 @@ export function ProductPage() {
                 </button>
               ))}
             </div>
-            <label className="field fabric-field">
-              <span>Fabric image</span>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,.png,.jpg,.jpeg"
-                onChange={onFabricFile}
-              />
-            </label>
+            <div className="fabric-row">
+              <label className="field fabric-field">
+                <span>Front image</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                  onChange={onSideFile('front')}
+                />
+              </label>
+              <label className="field fabric-field">
+                <span>Back image</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                  onChange={onSideFile('back')}
+                />
+              </label>
+            </div>
             <p className="stage-caption local-preview">
-              This image is only a local preview. It stays in this browser and is not uploaded.
+              Front and back images are only a local preview. They stay in this browser and are not uploaded. Sides stay the solid color until an image covers that region.
             </p>
             <p className="stage-caption credits">
               Body: CC0. Source:{' '}
@@ -207,9 +263,26 @@ export function ProductPage() {
                       onClick={() => account.selectCharacter(character.id)}
                     >
                       {character.name}
+                      <small>
+                        {character.gender === 'female' ? 'Female' : 'Male'} · {character.heightCm} cm · {character.weightKg} kg
+                      </small>
                     </button>
                   ))}
                 </div>
+                <label className="field">
+                  <span>Gender</span>
+                  <select
+                    value={account.active.gender}
+                    onChange={(event) =>
+                      account.updateCharacter(account.active!.id, {
+                        gender: event.target.value === 'female' ? 'female' : 'male',
+                      })
+                    }
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </label>
                 <div className="row-2">
                   <RangeField
                     label="Height (cm)"
@@ -231,6 +304,13 @@ export function ProductPage() {
                   <label className="field">
                     <span>Name</span>
                     <input name="name" required maxLength={40} />
+                  </label>
+                  <label className="field">
+                    <span>Gender</span>
+                    <select name="gender" defaultValue="male">
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
                   </label>
                   <div className="row-2">
                     <label className="field">

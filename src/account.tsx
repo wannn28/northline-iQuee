@@ -1,10 +1,17 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
+export type Gender = 'male' | 'female'
+
 export type Character = {
   id: string
   name: string
   heightCm: number
   weightKg: number
+  gender: Gender
+}
+
+export function normalizeGender(value: unknown): Gender {
+  return value === 'female' ? 'female' : 'male'
 }
 
 type Account = {
@@ -29,7 +36,19 @@ function load(): Persisted {
     const parsed = JSON.parse(raw) as Persisted
     if (!parsed || !Array.isArray(parsed.accounts)) return EMPTY
     return {
-      accounts: parsed.accounts.filter((account) => account && typeof account.email === 'string'),
+      accounts: parsed.accounts
+        .filter((account) => account && typeof account.email === 'string')
+        .map((account) => ({
+          ...account,
+          characters: Array.isArray(account.characters)
+            ? account.characters.map((character) => ({
+                ...character,
+                gender: character.gender === 'female' ? 'female' : 'male',
+                heightCm: clampHeight(Number(character.heightCm)),
+                weightKg: clampWeight(Number(character.weightKg)),
+              }))
+            : [],
+        })),
       sessionEmail: typeof parsed.sessionEmail === 'string' ? parsed.sessionEmail : null,
       activeCharacterId: typeof parsed.activeCharacterId === 'string' ? parsed.activeCharacterId : null,
     }
@@ -50,11 +69,11 @@ type AccountContextValue = {
   email: string | null
   characters: Character[]
   active: Character | null
-  register: (input: { email: string; password: string; name: string; heightCm: number; weightKg: number }) => string | null
+  register: (input: { email: string; password: string; name: string; heightCm: number; weightKg: number; gender: Gender }) => string | null
   login: (email: string, password: string) => string | null
   logout: () => void
-  addCharacter: (input: { name: string; heightCm: number; weightKg: number }) => string | null
-  updateCharacter: (id: string, patch: Partial<Pick<Character, 'name' | 'heightCm' | 'weightKg'>>) => void
+  addCharacter: (input: { name: string; heightCm: number; weightKg: number; gender: Gender }) => string | null
+  updateCharacter: (id: string, patch: Partial<Pick<Character, 'name' | 'heightCm' | 'weightKg' | 'gender'>>) => void
   selectCharacter: (id: string) => void
 }
 
@@ -98,6 +117,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
           name,
           heightCm: clampHeight(input.heightCm),
           weightKg: clampWeight(input.weightKg),
+          gender: normalizeGender(input.gender),
         }
         setState((prev) => ({
           accounts: [...prev.accounts, { email, password: input.password, characters: [character] }],
@@ -131,6 +151,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
           name,
           heightCm: clampHeight(input.heightCm),
           weightKg: clampWeight(input.weightKg),
+          gender: normalizeGender(input.gender),
         }
         setState((prev) => ({
           ...prev,
@@ -158,6 +179,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
                   name: patch.name !== undefined ? patch.name : character.name,
                   heightCm: patch.heightCm !== undefined ? clampHeight(patch.heightCm) : character.heightCm,
                   weightKg: patch.weightKg !== undefined ? clampWeight(patch.weightKg) : character.weightKg,
+                  gender: patch.gender !== undefined ? normalizeGender(patch.gender) : normalizeGender(character.gender),
                 }
               }),
             }

@@ -8,7 +8,8 @@
     "build": "vite build && npm run build:server",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=cjs --outfile=server/dist/index.cjs --external:better-sqlite3",
     "start": "NODE_ENV=production node server/dist/index.cjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "models": "node scripts/build-models.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
@@ -16,7 +17,10 @@
     "express": "^4.21.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-router-dom": "^7.6.2"
+    "react-router-dom": "^7.6.2",
+    "three": "0.186.1",
+    "@react-three/fiber": "9.8.1",
+    "@react-three/drei": "10.7.9"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

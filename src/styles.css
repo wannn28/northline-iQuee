@@ -260,3 +260,18 @@ footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; fl
   .grid { grid-template-columns: 1fr; }
   .wrap { width: min(var(--max), calc(100% - 28px)); }
 }
+
+.gallery { min-width: 0; }
+.stage { position: relative; aspect-ratio: 4 / 5; }
+.stage .viewer { position: absolute; inset: 0; }
+.stage canvas { display: block; touch-action: none; }
+.stage-caption { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.swatches { display: flex; gap: 10px; margin: 0 0 18px; }
+.swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid #c8c8c8;
+  padding: 0;
+}
+.swatch.on { box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--ink); }

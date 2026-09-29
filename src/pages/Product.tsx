@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fetchProduct } from '../api'
 import { useCart } from '../cart'
+import { TEE_COLORS, defaultTeeColor } from '../teeColors'
 import { money, type Product } from '../types'
+
+const ProductStage = lazy(() => import('../components/ProductStage').then((mod) => ({ default: mod.ProductStage })))
 
 export function ProductPage() {
   const { handle = '' } = useParams()
@@ -11,11 +14,13 @@ export function ProductPage() {
   const [error, setError] = useState('')
   const [variantId, setVariantId] = useState<number | null>(null)
   const [added, setAdded] = useState(false)
+  const [color, setColor] = useState(() => defaultTeeColor(handle))
 
   useEffect(() => {
     setProduct(null)
     setAdded(false)
     setError('')
+    setColor(defaultTeeColor(handle))
     fetchProduct(handle)
       .then((next) => {
         setProduct(next)
@@ -39,8 +44,17 @@ export function ProductPage() {
 
   return (
     <div className="wrap product">
-      <div className="media">
-        <img src={`/products/${product.handle}.svg`} alt={product.title} />
+      <div className="gallery">
+        <div className="media stage">
+          <Suspense fallback={<img src={`/products/${product.handle}.svg`} alt={product.title} />}>
+            <ProductStage kind={product.kind} handle={product.handle} color={color} />
+          </Suspense>
+        </div>
+        <p className="stage-caption">
+          {product.kind === 'tee'
+            ? 'Drag to rotate. Color swatches recolor this preview only.'
+            : 'Drag to rotate. The frame is a preview — the print ships unframed.'}
+        </p>
       </div>
       <div>
         <p className="kicker">{product.kind === 'poster' ? 'Poster' : 'Heavyweight tee'}</p>
@@ -48,7 +62,25 @@ export function ProductPage() {
         <p className="price">{variant ? money(variant.price_cents) : ''}</p>
         <p className="copy">{product.description}</p>
         <p className="details">{product.details}</p>
-        <span className="field-label">{product.kind === 'poster' ? 'Size' : 'Size'}</span>
+        {product.kind === 'tee' && (
+          <>
+            <span className="field-label">Color</span>
+            <div className="swatches">
+              {TEE_COLORS.map((swatch) => (
+                <button
+                  key={swatch.id}
+                  type="button"
+                  className={color === swatch.hex ? 'swatch on' : 'swatch'}
+                  style={{ background: swatch.hex }}
+                  aria-label={swatch.label}
+                  aria-pressed={color === swatch.hex}
+                  onClick={() => setColor(swatch.hex)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+        <span className="field-label">Size</span>
         <div className="sizes">
           {product.variants.map((item) => (
             <button

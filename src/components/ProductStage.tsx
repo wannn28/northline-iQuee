@@ -503,185 +503,6 @@ function coverSide(
   }
 }
 
-function nearestDonor(verts: ShellVert[], x: number, y: number, z: number) {
-  let best = 0
-  let dist = Infinity
-  for (let i = 0; i < verts.length; i += 1) {
-    const vert = verts[i]
-    const d = (vert.x - x) ** 2 + (vert.y - y) ** 2 + (vert.z - z) ** 2
-    if (d < dist) {
-      dist = d
-      best = i
-    }
-  }
-  return verts[best]
-}
-
-type Opening = {
-  neckRx: number
-  neckRz: number
-  neckY: number
-  armCx: number
-  armCy: number
-  armCz: number
-  armRx: number
-  armRy: number
-  band: number
-}
-
-/** Armhole stays under the shoulder peak (cover starts at y=0.58). */
-const ARM_TOP = 0.555
-
-function openingFor(fit: ShellFit): Opening {
-  const w = Math.max(0.7, fit.widthScale)
-  const neckRx = (0.055 * fit.neckScale) / w
-  const neckRz = (0.06 * fit.neckScale) / w
-  const armCy = 0.5
-  let armRy = (0.036 * fit.sleeveScale) / w
-  if (armCy + armRy > ARM_TOP) armRy = ARM_TOP - armCy
-  const armRx = (0.04 * fit.sleeveScale) / w
-  return {
-    neckRx,
-    neckRz,
-    neckY: 0.628,
-    armCx: 0.02,
-    armCy,
-    armCz: 0.185,
-    armRx,
-    armRy,
-    band: 0.016 / w,
-  }
-}
-
-function inNeckHole(x: number, y: number, z: number, hole: Opening) {
-  if (y < hole.neckY - 0.028) return false
-  const dx = x / hole.neckRx
-  const dz = z / hole.neckRz
-  return dx * dx + dz * dz < 1
-}
-
-function inArmHole(x: number, y: number, z: number, hole: Opening) {
-  if (y > ARM_TOP) return false
-  for (const sign of [-1, 1]) {
-    if (sign < 0 && z > -0.12) continue
-    if (sign > 0 && z < 0.12) continue
-    if (Math.abs(Math.abs(z) - hole.armCz) > hole.band + 0.03) continue
-    const dx = (x - hole.armCx) / hole.armRx
-    const dy = (y - hole.armCy) / hole.armRy
-    if (dx * dx + dy * dy < 1) return true
-  }
-  return false
-}
-
-function isSideFin(verts: ShellVert[], ids: number[]) {
-  let y = 0
-  let z = 0
-  let ax = 0
-  for (const id of ids) {
-    y += verts[id].y
-    z += Math.abs(verts[id].z)
-    ax += Math.abs(verts[id].nx)
-  }
-  y /= 3
-  z /= 3
-  ax /= 3
-  return y < 0.57 && z > 0.09 && ax < 0.38
-}
-
-function punchOpenings(verts: ShellVert[], indices: number[], hole: Opening) {
-  const kept: number[] = []
-  for (let face = 0; face < indices.length; face += 3) {
-    const ids = [indices[face], indices[face + 1], indices[face + 2]]
-    const inside = ids.some((id) => {
-      const vert = verts[id]
-      return inNeckHole(vert.x, vert.y, vert.z, hole) || inArmHole(vert.x, vert.y, vert.z, hole)
-    })
-    if (!inside && !isSideFin(verts, ids)) kept.push(ids[0], ids[1], ids[2])
-  }
-  indices.length = 0
-  indices.push(...kept)
-}
-
-function addBand(
-  verts: ShellVert[],
-  indices: number[],
-  inner: { x: number; y: number; z: number }[],
-  outer: { x: number; y: number; z: number }[],
-  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  hemY: number,
-) {
-  const a: number[] = []
-  const b: number[] = []
-  const donors = verts.length
-  for (let i = 0; i < inner.length; i += 1) {
-    const src = nearestDonor(verts.slice(0, donors), inner[i].x, inner[i].y, inner[i].z)
-    a.push(spawnFrom(verts, src, inner[i].x, inner[i].y, inner[i].z, 0, 1, 0, wristT, aroundArm, hemY))
-    b.push(spawnFrom(verts, src, outer[i].x, outer[i].y, outer[i].z, 0, 1, 0, wristT, aroundArm, hemY))
-  }
-  const n = inner.length
-  for (let i = 0; i < n; i += 1) {
-    const j = (i + 1) % n
-    indices.push(a[i], b[i], b[j], a[i], b[j], a[j])
-  }
-}
-
-function bindNeck(
-  verts: ShellVert[],
-  indices: number[],
-  hole: Opening,
-  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  hemY: number,
-) {
-  const n = 40
-  const y = hole.neckY
-  const inner: { x: number; y: number; z: number }[] = []
-  const outer: { x: number; y: number; z: number }[] = []
-  for (let i = 0; i < n; i += 1) {
-    const ang = (i / n) * Math.PI * 2
-    const c = Math.cos(ang)
-    const s = Math.sin(ang)
-    inner.push({ x: c * hole.neckRx, y, z: s * hole.neckRz })
-    outer.push({
-      x: c * (hole.neckRx + hole.band),
-      y: y - hole.band * 0.85,
-      z: s * (hole.neckRz + hole.band),
-    })
-  }
-  addBand(verts, indices, inner, outer, wristT, aroundArm, hemY)
-}
-
-function bindArm(
-  verts: ShellVert[],
-  indices: number[],
-  sign: 1 | -1,
-  hole: Opening,
-  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  hemY: number,
-) {
-  const n = 36
-  const cx = hole.armCx
-  const cy = hole.armCy
-  const cz = sign * hole.armCz
-  const inner: { x: number; y: number; z: number }[] = []
-  const outer: { x: number; y: number; z: number }[] = []
-  for (let i = 0; i < n; i += 1) {
-    const ang = (i / n) * Math.PI * 2
-    const c = Math.cos(ang)
-    const s = Math.sin(ang)
-    const oy = cy + s * (hole.armRy + hole.band)
-    inner.push({ x: cx + c * hole.armRx, y: cy + s * hole.armRy, z: cz })
-    outer.push({
-      x: cx + c * (hole.armRx + hole.band),
-      y: Math.min(ARM_TOP + 0.012, oy),
-      z: cz - sign * hole.band * 0.65,
-    })
-  }
-  addBand(verts, indices, inner, outer, wristT, aroundArm, hemY)
-}
-
 function applyWidth(verts: ShellVert[], widthScale: number) {
   const w = Math.max(0.7, widthScale)
   if (Math.abs(w - 1) < 1e-4) return
@@ -713,37 +534,52 @@ function scaleSleeved(verts: ShellVert[], fit: ShellFit) {
   }
 }
 
-
-function coverShoulder(
-  verts: ShellVert[],
-  indices: number[],
-  sign: 1 | -1,
-  hemY: number,
-  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
-) {
-  const ys = [0.58, 0.6, 0.62, 0.64]
-  const zs = [0.05, 0.09, 0.13, 0.17]
-  const grid: number[][] = []
-  for (const y of ys) {
-    const line: number[] = []
-    for (const absZ of zs) {
-      const z = sign * absZ
-      const src = nearestDonor(verts, 0.02, y, z)
-      const x = Math.max(0.02, src.x * 0.35)
-      line.push(spawnFrom(verts, src, x, y, z, 0, 0.6, sign * 0.8, wristT, aroundArm, hemY))
-    }
-    grid.push(line)
-  }
-  for (let row = 0; row < ys.length - 1; row += 1) {
-    for (let col = 0; col < zs.length - 1; col += 1) {
-      const a = grid[row][col]
-      const b = grid[row][col + 1]
-      const c = grid[row + 1][col]
-      const d = grid[row + 1][col + 1]
-      indices.push(a, b, d, a, d, c)
+function boundaryLoops(indices: number[]) {
+  const count = new Map<string, number>()
+  const ends = new Map<string, [number, number]>()
+  const key = (a: number, b: number) => (a < b ? `${a}|${b}` : `${b}|${a}`)
+  for (let face = 0; face < indices.length; face += 3) {
+    const tri = [indices[face], indices[face + 1], indices[face + 2]]
+    for (let k = 0; k < 3; k += 1) {
+      const a = tri[k]
+      const b = tri[(k + 1) % 3]
+      const id = key(a, b)
+      count.set(id, (count.get(id) ?? 0) + 1)
+      ends.set(id, [a, b])
     }
   }
+  const adj = new Map<number, number[]>()
+  const link = (a: number, b: number) => {
+    const list = adj.get(a)
+    if (list) list.push(b)
+    else adj.set(a, [b])
+  }
+  for (const [id, n] of count) {
+    if (n !== 1) continue
+    const pair = ends.get(id)
+    if (!pair) continue
+    link(pair[0], pair[1])
+    link(pair[1], pair[0])
+  }
+  const seen = new Set<number>()
+  const loops: number[][] = []
+  for (const start of adj.keys()) {
+    if (seen.has(start)) continue
+    const loop = [start]
+    seen.add(start)
+    let prev = -1
+    let cur = start
+    for (;;) {
+      const next = (adj.get(cur) ?? []).find((id) => id !== prev && !seen.has(id))
+      if (next === undefined) break
+      seen.add(next)
+      loop.push(next)
+      prev = cur
+      cur = next
+    }
+    if (loop.length >= 6) loops.push(loop)
+  }
+  return loops
 }
 
 function sealSleeveless(
@@ -754,15 +590,70 @@ function sealSleeveless(
   hemY: number,
   fit: ShellFit,
 ) {
-  const hole = openingFor(fit)
   coverSide(verts, indices, 1, hemY, wristT, aroundArm)
   coverSide(verts, indices, -1, hemY, wristT, aroundArm)
-  coverShoulder(verts, indices, -1, hemY, wristT, aroundArm)
-  coverShoulder(verts, indices, 1, hemY, wristT, aroundArm)
-  punchOpenings(verts, indices, hole)
-  bindNeck(verts, indices, hole, wristT, aroundArm, hemY)
-  bindArm(verts, indices, -1, hole, wristT, aroundArm, hemY)
-  bindArm(verts, indices, 1, hole, wristT, aroundArm, hemY)
+  const w = Math.max(0.7, fit.widthScale)
+  const neck = fit.neckScale / w
+  const sleeve = fit.sleeveScale / w
+  for (const loop of boundaryLoops(indices)) {
+    let cy = 0
+    let cz = 0
+    for (const id of loop) {
+      cy += verts[id].y
+      cz += verts[id].z
+    }
+    cy /= loop.length
+    cz /= loop.length
+    const neckLoop = loop.length <= 40 && loop.every((id) => verts[id].y > 0.6)
+    const armLoop = !neckLoop && cy > 0.5 && cy < 0.62 && Math.abs(cz) > 0.08 && loop.length <= 36
+    if (!neckLoop && !armLoop) continue
+    let cx = 0
+    for (const id of loop) cx += verts[id].x
+    cx /= loop.length
+    const outer: number[] = []
+    for (const id of loop) {
+      const vert = verts[id]
+      if (neckLoop) {
+        const ang = Math.atan2(vert.z - cz, vert.x - cx)
+        const rx = 0.055 * neck
+        const rz = 0.06 * neck
+        vert.x = cx + Math.cos(ang) * rx
+        vert.z = cz + Math.sin(ang) * rz
+        vert.y = Math.max(vert.y, 0.62)
+      } else {
+        const ang = Math.atan2(vert.y - cy, vert.z - cz)
+        let ry = 0.04 * sleeve
+        const rz = 0.038 * sleeve
+        if (cy + ry > 0.57) ry = 0.57 - cy
+        vert.y = cy + Math.sin(ang) * ry
+        vert.z = cz + Math.cos(ang) * rz
+      }
+      const src = verts[id]
+      const radialX = src.x - cx
+      const radialY = neckLoop ? 0 : src.y - cy
+      const radialZ = src.z - cz
+      const len = Math.hypot(radialX, radialY, radialZ) || 1
+      outer.push(
+        spawnFrom(
+          verts,
+          src,
+          src.x + (radialX / len) * (0.016 / w),
+          src.y + (radialY / len) * (0.016 / w),
+          src.z + (radialZ / len) * (0.016 / w),
+          0,
+          neckLoop ? 1 : 0,
+          neckLoop ? 0 : Math.sign(cz || 1),
+          wristT,
+          aroundArm,
+          hemY,
+        ),
+      )
+    }
+    for (let i = 0; i < loop.length; i += 1) {
+      const j = (i + 1) % loop.length
+      indices.push(loop[i], outer[i], outer[j], loop[i], outer[j], loop[j])
+    }
+  }
 }
 
 function assignUv(

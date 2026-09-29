@@ -377,6 +377,7 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment, hemY: number) {
   if (indices.length < 30) throw new Error('garment shell is empty')
 
   if (garment === 'button') addCollar(verts, indices, wristT, aroundArm, hemY)
+  if (garment === 'sleeveless') sealSleeveless(verts, indices, wristT, aroundArm, hemY)
 
   const positions = new Float32Array(verts.length * 3)
   const normals = new Float32Array(verts.length * 3)
@@ -410,6 +411,214 @@ function buildGarment(mesh: THREE.SkinnedMesh, garment: Garment, hemY: number) {
   geometry.setIndex(indices)
   geometry.computeVertexNormals()
   return geometry
+}
+
+
+function boundaryLoops(indices: number[]) {
+  const count = new Map<string, number>()
+  const ends = new Map<string, [number, number]>()
+  const key = (a: number, b: number) => (a < b ? `${a}|${b}` : `${b}|${a}`)
+  for (let face = 0; face < indices.length; face += 3) {
+    const tri = [indices[face], indices[face + 1], indices[face + 2]]
+    for (let k = 0; k < 3; k += 1) {
+      const a = tri[k]
+      const b = tri[(k + 1) % 3]
+      const id = key(a, b)
+      count.set(id, (count.get(id) ?? 0) + 1)
+      ends.set(id, [a, b])
+    }
+  }
+  const adj = new Map<number, number[]>()
+  const link = (a: number, b: number) => {
+    const list = adj.get(a)
+    if (list) list.push(b)
+    else adj.set(a, [b])
+  }
+  for (const [id, n] of count) {
+    if (n !== 1) continue
+    const pair = ends.get(id)
+    if (!pair) continue
+    link(pair[0], pair[1])
+    link(pair[1], pair[0])
+  }
+  const seen = new Set<number>()
+  const loops: number[][] = []
+  for (const start of adj.keys()) {
+    if (seen.has(start)) continue
+    const loop = [start]
+    seen.add(start)
+    let prev = -1
+    let cur = start
+    for (;;) {
+      const next = (adj.get(cur) ?? []).find((id) => id !== prev && !seen.has(id))
+      if (next === undefined) break
+      seen.add(next)
+      loop.push(next)
+      prev = cur
+      cur = next
+    }
+    if (loop.length >= 3) loops.push(loop)
+  }
+  return loops
+}
+
+function spawnFrom(
+  verts: ShellVert[],
+  src: ShellVert,
+  x: number,
+  y: number,
+  z: number,
+  nx: number,
+  ny: number,
+  nz: number,
+  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  hemY: number,
+) {
+  const len = Math.hypot(nx, ny, nz) || 1
+  const copy: ShellVert = {
+    ...src,
+    skinI: src.skinI.slice(),
+    skinW: src.skinW.slice(),
+    x,
+    y,
+    z,
+    nx: nx / len,
+    ny: ny / len,
+    nz: nz / len,
+    sleeve: false,
+    region: 0,
+    u: 0,
+    v: 0,
+  }
+  copy.region = copy.nx > FRONT_NX ? 1 : copy.nx < -FRONT_NX ? 2 : 0
+  assignUv(copy, copy.region, false, wristT, aroundArm, hemY)
+  verts.push(copy)
+  return verts.length - 1
+}
+
+function projectLoop(verts: ShellVert[], ids: number[], plane: 'neck' | 'arm') {
+  const n = ids.length
+  if (n < 6) return
+  let cx = 0
+  let cy = 0
+  let cz = 0
+  for (const id of ids) {
+    cx += verts[id].x
+    cy += verts[id].y
+    cz += verts[id].z
+  }
+  cx /= n
+  cy /= n
+  cz /= n
+  if (plane === 'neck') {
+    let rx = 0
+    let rz = 0
+    for (const id of ids) {
+      rx = Math.max(rx, Math.abs(verts[id].x - cx))
+      rz = Math.max(rz, Math.abs(verts[id].z - cz))
+    }
+    rx = Math.max(0.045, rx)
+    rz = Math.max(0.045, rz)
+    for (const id of ids) {
+      const vert = verts[id]
+      const ang = Math.atan2(vert.z - cz, vert.x - cx)
+      vert.x = cx + Math.cos(ang) * rx
+      vert.z = cz + Math.sin(ang) * rz
+      vert.y = cy
+    }
+    return
+  }
+  let ry = 0
+  let rz = 0
+  for (const id of ids) {
+    ry = Math.max(ry, Math.abs(verts[id].y - cy))
+    rz = Math.max(rz, Math.abs(verts[id].z - cz))
+  }
+  ry = Math.max(0.04, ry)
+  rz = Math.max(0.035, rz)
+  for (const id of ids) {
+    const vert = verts[id]
+    const ang = Math.atan2(vert.y - cy, vert.z - cz)
+    vert.y = cy + Math.sin(ang) * ry
+    vert.z = cz + Math.cos(ang) * rz
+    vert.x = cx
+  }
+}
+
+function coverSide(
+  verts: ShellVert[],
+  indices: number[],
+  sign: 1 | -1,
+  hemY: number,
+  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+) {
+  const y0 = Math.max(hemY + 0.025, 0.2)
+  const y1 = 0.625
+  const rows = 8
+  const cols = 9
+  const grid: number[][] = []
+  for (let row = 0; row < rows; row += 1) {
+    const rt = row / (rows - 1)
+    const y = y0 + (y1 - y0) * rt
+    const halfZ = 0.15 - rt * 0.07
+    const line: number[] = []
+    for (let col = 0; col < cols; col += 1) {
+      const z = -halfZ + (2 * halfZ) * (col / (cols - 1))
+      let best = -1
+      let dist = Infinity
+      for (let i = 0; i < verts.length; i += 1) {
+        const vert = verts[i]
+        if (sign * vert.nx < 0.2 || vert.sleeve) continue
+        const d = (vert.y - y) ** 2 + (vert.z - z) ** 2
+        if (d < dist) {
+          dist = d
+          best = i
+        }
+      }
+      if (best < 0) continue
+      const src = verts[best]
+      const x = sign * Math.max(0.09, Math.abs(src.x))
+      line.push(spawnFrom(verts, src, x, y, z, sign, 0, 0, wristT, aroundArm, hemY))
+    }
+    if (line.length === cols) grid.push(line)
+  }
+  for (let row = 0; row < grid.length - 1; row += 1) {
+    for (let col = 0; col < cols - 1; col += 1) {
+      const a = grid[row][col]
+      const b = grid[row][col + 1]
+      const c = grid[row + 1][col]
+      const d = grid[row + 1][col + 1]
+      indices.push(a, b, d, a, d, c)
+    }
+  }
+}
+
+function sealSleeveless(
+  verts: ShellVert[],
+  indices: number[],
+  wristT: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  aroundArm: (side: 'L' | 'R', x: number, y: number, z: number) => number,
+  hemY: number,
+) {
+  coverSide(verts, indices, 1, hemY, wristT, aroundArm)
+  coverSide(verts, indices, -1, hemY, wristT, aroundArm)
+  for (const loop of boundaryLoops(indices)) {
+    let cy = 0
+    let cz = 0
+    for (const id of loop) {
+      cy += verts[id].y
+      cz += verts[id].z
+    }
+    cy /= loop.length
+    cz /= loop.length
+    if (loop.length >= 8 && loop.length <= 28 && loop.every((id) => verts[id].y > 0.6)) {
+      projectLoop(verts, loop, 'neck')
+    } else if (loop.length >= 6 && loop.length <= 22 && cy > 0.48 && Math.abs(cz) > 0.08) {
+      projectLoop(verts, loop, 'arm')
+    }
+  }
 }
 
 function assignUv(
